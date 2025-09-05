@@ -1,4 +1,4 @@
-name: Build LGPL mpv
+name: Build LGPL mpv (dpkg-deb method)
 
 on:
   push:
@@ -14,19 +14,15 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential git libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev checkinstall meson ninja-build libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev libfribidi-dev libharfbuzz-dev
+          sudo apt install -y build-essential git meson ninja-build devscripts \
+              libavcodec-dev libavfilter-dev libavformat-dev libswscale-dev libswresample-dev \
+              libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
+              libfribidi-dev libharfbuzz-dev libass-dev
 
       - name: Build and install libplacebo
         run: |
           git clone --depth=1 --recursive https://github.com/haasn/libplacebo.git
           cd libplacebo
-          meson setup build
-          sudo ninja -C build install
-
-      - name: Build and install libass
-        run: |
-          git clone --depth=1 https://github.com/libass/libass.git
-          cd libass
           meson setup build
           sudo ninja -C build install
 
@@ -42,11 +38,32 @@ jobs:
       - name: Create deb package
         run: |
           cd mpv
-          sudo ninja -C build install
-          sudo checkinstall -y --pkgname=mpv-lgpl --pkgversion=1:0.40.0 --maintainer="Your Name <your.email@example.com>" --pakdir=/tmp/
+          # デストリビューションディレクトリを作成
+          mkdir -p debian/usr/local/bin
+          mkdir -p debian/usr/local/lib/x86_64-linux-gnu
+          mkdir -p debian/usr/local/share/man/man1
+          mkdir -p debian/DEBIAN
+
+          # mpvの実行可能ファイルとライブラリをコピー
+          cp build/mpv debian/usr/local/bin/
+          cp build/libmpv.so.2.5.0 debian/usr/local/lib/x86_64-linux-gnu/
           
+          # CONTROLファイルを作成
+          cat <<EOF > debian/DEBIAN/control
+          Package: mpv-lgpl
+          Version: 1:0.40.0
+          Section: video
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Your Name <your.email@example.com>
+          Description: The LGPL build of mpv video player.
+          EOF
+          
+          # debパッケージをビルド
+          dpkg-deb --build debian mpv-lgpl-1_0.40.0-1_amd64.deb
+
       - name: Upload deb package as artifact
         uses: actions/upload-artifact@v4
         with:
           name: mpv-lgpl-deb-package
-          path: /tmp/*.deb
+          path: mpv/mpv-lgpl-1_0.40.0-1_amd64.deb
