@@ -44,13 +44,11 @@ jobs:
 
           mkdir -p "$DEB_DIR/usr/local/bin"
           mkdir -p "$DEB_DIR/usr/local/lib/x86_64-linux-gnu"
-          mkdir -p "$DEB_DIR/usr/local/share/man/man1"
           mkdir -p "$DEB_DIR/DEBIAN"
 
           # ファイルをコピー
           cp "$MPV_BUILD_DIR/mpv" "$DEB_DIR/usr/local/bin/"
           cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/"
-          cp "$MPV_BUILD_DIR/mpv.1" "$DEB_DIR/usr/local/share/man/man1/"
 
           # libmpv.soのシンボリックリンクを作成
           (cd "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
