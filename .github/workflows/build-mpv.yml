@@ -148,7 +148,7 @@ jobs:
       - name: Install dependencies via Homebrew
         if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'false'
         run: |
-          brew install make meson ninja autoconf automake
+          brew install make meson ninja autoconf automake pkg-config harfbuzz fontconfig freetype fribidi
 
       - name: Build macOS package
         id: build_mac_pkg
