@@ -1,0 +1,34 @@
+name: Build and Package MPV
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install build-essential git libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev checkinstall
+
+      - name: Build MPV
+        run: |
+          git clone https://github.com/mpv-player/mpv-build.git
+          cd mpv-build
+          ./rebuild -c
+
+      - name: Create deb package
+        run: |
+          cd mpv-build
+          sudo checkinstall --pkgname=mpv --pkgversion=1:0.35.1 --pakdir=/tmp/
+          
+      - name: Upload deb package as artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: mpv-deb-package
+          path: /tmp/*.deb
