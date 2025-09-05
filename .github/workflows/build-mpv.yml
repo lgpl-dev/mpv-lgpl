@@ -277,12 +277,13 @@ jobs:
         git clone https://github.com/mm2/Little-CMS.git
         cd Little-CMS
         unset CC CXX LDFLAGS CPPFLAGS
-        ./configure \
+        meson setup \
             --prefix="$BUILD_DIR" \
             --libdir="$BUILD_DIR/lib" \
-            --includedir="$BUILD_DIR/include"
-        gmake -j$(sysctl -n hw.ncpu)
-        gmake install
+            --includedir="$BUILD_DIR/include" \
+            builddir
+        ninja -C builddir
+        ninja -C builddir install
         cd "$SCRIPT_DIR"
 
     - name: Build mpv
