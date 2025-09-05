@@ -10,10 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential git libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev checkinstall meson ninja-build
+          # FFmpeg開発用ライブラリを追加
+          sudo apt install -y build-essential git libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev checkinstall meson ninja-build libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev
 
       - name: Get mpv source
         run: git clone --depth=1 https://github.com/mpv-player/mpv.git
@@ -28,8 +30,8 @@ jobs:
         run: |
           cd mpv
           sudo ninja -C build install
-          sudo checkinstall -y --pkgname=mpv-lgpl --pkgversion=1:0.35.1 --maintainer=your_name --pakdir=/tmp/
-
+          sudo checkinstall -y --pkgname=mpv-lgpl --pkgversion=1:0.40.0 --maintainer="Your Name <your.email@example.com>" --pakdir=/tmp/
+          
       - name: Upload deb package as artifact
         uses: actions/upload-artifact@v4
         with:
