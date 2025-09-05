@@ -314,47 +314,18 @@ jobs:
         set -e
         SCRIPT_DIR=$(pwd)
         BUILD_DIR="$SCRIPT_DIR/local"
-        FINAL_PKG_DIR="mac_pkg"
         
-        echo "--- Creating self-contained package ---"
+        echo "--- Creating self-contained package from $BUILD_DIR ---"
         LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         MPV_VERSION=$(echo "$LATEST_MPV_TAG" | sed 's/^v//')
         if [ -z "$MPV_VERSION" ]; then exit 1; fi
-
-        mkdir -p "$FINAL_PKG_DIR/Contents/MacOS"
-        mkdir -p "$FINAL_PKG_DIR/Contents/Frameworks"
-
-        cp "$BUILD_DIR/bin/mpv" "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
-
-        echo "--- Debugging: Copying all local dylibs ---"
-        find "$BUILD_DIR/lib" -name '*.dylib' -exec cp -L {} "$FINAL_PKG_DIR/Contents/Frameworks/" \;
-        echo "------------------------------------------"
         
-        # Now, relink the libraries inside the Frameworks directory
-        # Check if any files exist before the loop to avoid errors on empty directories
-        if [ -n "$(find "$FINAL_PKG_DIR/Contents/Frameworks/" -name '*.dylib')" ]; then
-            for LIB in "$FINAL_PKG_DIR/Contents/Frameworks"/*; do
-                # Change ID of the library itself
-                install_name_tool -id "@executable_path/../Frameworks/$(basename "$LIB")" "$LIB"
-                
-                # Change dependencies within the library
-                LIB_DEPS_TO_CHANGE=$(otool -L "$LIB" | grep "$BUILD_DIR" | awk '{print $1}')
-                for LIB_DEP in $LIB_DEPS_TO_CHANGE; do
-                    install_name_tool -change "$LIB_DEP" "@executable_path/../Frameworks/$(basename "$LIB_DEP")" "$LIB"
-                done
-            done
-        fi
+        PACKAGE_NAME="mpv-lgpl-${MPV_VERSION}-macos-arm64.tar.gz"
         
-        # Change dependencies of the main executable
-        MPV_DEPS_TO_CHANGE=$(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | grep "$BUILD_DIR" | awk '{print $1}')
-        for MPV_DEP in $MPV_DEPS_TO_CHANGE; do
-            install_name_tool -change "$MPV_DEP" "@executable_path/../Frameworks/$(basename "$MPV_DEP")" "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
-        done
-
-        echo "--- Creating archive ---"
-        tar -czf mpv-lgpl-${MPV_VERSION}-macos-arm64.tar.gz -C "$FINAL_PKG_DIR/.." $(basename "$FINAL_PKG_DIR")
+        # localディレクトリを直接tar.gzに圧縮する
+        tar -czf "$PACKAGE_NAME" -C "$BUILD_DIR" .
         
-        echo "package_path=mpv-lgpl-${MPV_VERSION}-macos-arm64.tar.gz" >> "$GITHUB_OUTPUT"
+        echo "package_path=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
 
     - name: Upload macOS package as artifact
       if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'false'
