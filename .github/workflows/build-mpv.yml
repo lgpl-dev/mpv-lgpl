@@ -1,4 +1,4 @@
-name: Build LGPL mpv (dpkg-deb method)
+name: Build LGPL mpv
 
 on:
   push:
@@ -35,35 +35,48 @@ jobs:
           meson setup build -Dgpl=false
           ninja -C build
 
-      - name: Create deb package
+      - name: Create deb package with dpkg-deb
         run: |
-          cd mpv
-          # デストリビューションディレクトリを作成
-          mkdir -p debian/usr/local/bin
-          mkdir -p debian/usr/local/lib/x86_64-linux-gnu
-          mkdir -p debian/usr/local/share/man/man1
-          mkdir -p debian/DEBIAN
+          MPV_VERSION="0.40.0"
+          DEB_PACKAGE_NAME="mpv-lgpl_${MPV_VERSION}-1_amd64.deb"
+          DEB_DIR="debian_pkg"
+          MPV_BUILD_DIR="mpv/build"
 
-          # mpvの実行可能ファイルとライブラリをコピー
-          cp build/mpv debian/usr/local/bin/
-          cp build/libmpv.so.2.5.0 debian/usr/local/lib/x86_64-linux-gnu/
-          
-          # CONTROLファイルを作成
-          cat <<EOF > debian/DEBIAN/control
+          mkdir -p "$DEB_DIR/usr/local/bin"
+          mkdir -p "$DEB_DIR/usr/local/lib/x86_64-linux-gnu"
+          mkdir -p "$DEB_DIR/usr/local/share/man/man1"
+          mkdir -p "$DEB_DIR/DEBIAN"
+
+          # ファイルをコピー
+          cp "$MPV_BUILD_DIR/mpv" "$DEB_DIR/usr/local/bin/"
+          cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/"
+          cp "$MPV_BUILD_DIR/mpv.1" "$DEB_DIR/usr/local/share/man/man1/"
+
+          # libmpv.soのシンボリックリンクを作成
+          (cd "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
+          (cd "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/" && ln -s libmpv.so.2 libmpv.so)
+
+          # controlファイルを作成
+          cat > "$DEB_DIR/DEBIAN/control" <<EOF
           Package: mpv-lgpl
-          Version: 1:0.40.0
+          Version: ${MPV_VERSION}
           Section: video
           Priority: optional
           Architecture: amd64
           Maintainer: Your Name <your.email@example.com>
-          Description: The LGPL build of mpv video player.
+          Description: A media player LGPLv2.1 or later.
+           mpv is a free and open-source command-line media player.
+           This package is built with LGPLv2.1+ only files.
+          Depends: libavcodec-dev, libavfilter-dev, libavformat-dev, libswresample-dev, libswscale-dev, libjpeg-dev, libx11-dev, libxext-dev, libxinerama-dev, libfreetype6-dev, libfontconfig-dev, libfribidi-dev, libharfbuzz-dev, libass-dev
           EOF
-          
-          # debパッケージをビルド
-          dpkg-deb --build debian mpv-lgpl-1_0.40.0-1_amd64.deb
 
+          # debパッケージをビルド
+          dpkg-deb --build "$DEB_DIR" "$DEB_PACKAGE_NAME"
+          mv "$DEB_PACKAGE_NAME" "$HOME/"
+      
       - name: Upload deb package as artifact
         uses: actions/upload-artifact@v4
         with:
           name: mpv-lgpl-deb-package
-          path: mpv/mpv-lgpl-1_0.40.0-1_amd64.deb
+          path: |
+            ~/*.deb
