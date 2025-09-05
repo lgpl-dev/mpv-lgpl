@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # リリースを作成・アップロードするために必要
+
     steps:
       - uses: actions/checkout@v4
 
@@ -36,6 +39,7 @@ jobs:
           ninja -C build
 
       - name: Create deb package with dpkg-deb
+        id: create_deb
         run: |
           MPV_VERSION="0.40.0"
           DEB_PACKAGE_NAME="mpv-lgpl_${MPV_VERSION}-1_amd64.deb"
@@ -46,15 +50,12 @@ jobs:
           mkdir -p "$DEB_DIR/usr/local/lib/x86_64-linux-gnu"
           mkdir -p "$DEB_DIR/DEBIAN"
 
-          # ファイルをコピー
           cp "$MPV_BUILD_DIR/mpv" "$DEB_DIR/usr/local/bin/"
           cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/"
 
-          # libmpv.soのシンボリックリンクを作成
           (cd "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
           (cd "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/" && ln -s libmpv.so.2 libmpv.so)
 
-          # controlファイルを作成
           cat > "$DEB_DIR/DEBIAN/control" <<EOF
           Package: mpv-lgpl
           Version: ${MPV_VERSION}
@@ -68,13 +69,24 @@ jobs:
           Depends: libavcodec-dev, libavfilter-dev, libavformat-dev, libswresample-dev, libswscale-dev, libjpeg-dev, libx11-dev, libxext-dev, libxinerama-dev, libfreetype6-dev, libfontconfig-dev, libfribidi-dev, libharfbuzz-dev, libass-dev
           EOF
 
-          # debパッケージをビルド
           dpkg-deb --build "$DEB_DIR" "$DEB_PACKAGE_NAME"
-          mv "$DEB_PACKAGE_NAME" "$HOME/"
-      
-      - name: Upload deb package as artifact
-        uses: actions/upload-artifact@v4
+          
+          # 環境変数としてパッケージ名を保存
+          echo "DEB_PACKAGE_NAME=$DEB_PACKAGE_NAME" >> "$GITHUB_ENV"
+          
+      - name: Create release
+        id: create_release
+        uses: softprops/action-gh-release@v1
         with:
-          name: mpv-lgpl-deb-package
-          path: |
-            ~/*.deb
+          tag_name: "v0.40.0-${{ github.run_number }}"
+          name: "LGPL mpv v0.40.0"
+          draft: false
+          prerelease: false
+
+      - name: Upload release asset
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.DEB_PACKAGE_NAME }}
+          asset_name: ${{ env.DEB_PACKAGE_NAME }}
+          asset_content_type: application/vnd.debian.binary-package
