@@ -271,12 +271,6 @@ jobs:
         ninja -C builddir install
         cd "$SCRIPT_DIR"
 
-    - name: List contents of local directory for debugging
-      run: |
-        echo "--- Debugging: Contents of 'local' directory ---"
-        ls -R local
-        echo "------------------------------------------------"
-
     - name: Create self-contained package
       id: build_mac_pkg
       run: |
@@ -295,9 +289,11 @@ jobs:
 
         cp "$BUILD_DIR/bin/mpv" "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
 
+        export DYLD_LIBRARY_PATH="$BUILD_DIR/lib"
+
         LIBS_TO_COPY=$(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | \
                            grep -E 'lib\.dylib' | \
-                           grep -v 'libSystem|libobjc' | \
+                           grep -v 'libSystem|libobjc|libunwind' | \
                            awk '{print $1}')
         
         for LIB in $LIBS_TO_COPY; do
@@ -313,7 +309,7 @@ jobs:
             done
         done
 
-        MPV_DEPS_TO_CHANGE=$(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | grep -E 'lib\.dylib' | grep -v 'libSystem|libobjc|@executable_path' | awk '{print $1}')
+        MPV_DEPS_TO_CHANGE=$(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | grep -E 'lib\.dylib' | grep -v 'libSystem|libobjc|@executable_path|libunwind' | awk '{print $1}')
         for MPV_DEP in $MPV_DEPS_TO_CHANGE; do
             install_name_tool -change "$MPV_DEP" "@executable_path/../Frameworks/$(basename "$MPV_DEP")" "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
         done
