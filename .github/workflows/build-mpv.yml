@@ -295,9 +295,9 @@ jobs:
 
         LIBS_TO_COPY=$(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | \
                            grep -E 'lib\.dylib' | \
-                           grep -v 'libSystem|libobjc|libunwind' | \
+                           grep -v 'libSystem|libobjc|libunwind|/opt/homebrew' | \
                            awk '{print $1}' | \
-                           sed 's/@rpath\///g' | \
+                           xargs -I {} basename {} | \
                            xargs -I {} echo "$BUILD_DIR/lib/{}")
 
         echo "--- Debugging: Files to be copied ---"
