@@ -1,17 +1,46 @@
-name: Build LGPL mpv
+name: Build LGPL mpv on Schedule
 
 on:
-  push:
-    tags:
-      - 'v*'
+  schedule:
+    # 毎月1日9時（JST）に実行。UTCでは午前0時です。
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+    # 手動実行用
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
+      - name: Check for new release and fetch current version
+        id: check_version
+        run: |
+          LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          CURRENT_RELEASE_TAG=$(git describe --tags --abbrev=0)
+
+          echo "Latest mpv tag: $LATEST_MPV_TAG"
+          echo "Current release tag: $CURRENT_RELEASE_TAG"
+
+          if [ "$LATEST_MPV_TAG" != "$CURRENT_RELEASE_TAG" ]; then
+            echo "A new version of mpv is available. Proceeding with the build."
+            echo "BUILD_REQUIRED=true" >> "$GITHUB_ENV"
+            echo "NEW_TAG=$LATEST_MPV_TAG" >> "$GITHUB_ENV"
+          else
+            echo "No new version available. Exiting."
+            echo "BUILD_REQUIRED=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Skip build if no new version
+        if: env.BUILD_REQUIRED == 'false'
+        run: |
+          echo "Skipping build as no new version is available."
+          exit 0
+
       - uses: actions/checkout@v4
+      - name: Fetch all tags for accurate git describe
+        run: git fetch --tags
 
       - name: Install dependencies
         run: |
@@ -40,7 +69,7 @@ jobs:
       - name: Create deb package with dpkg-deb
         id: create-package
         run: |
-          MPV_VERSION="0.40.0"
+          MPV_VERSION=$(echo ${{ env.NEW_TAG }} | sed 's/^v//')
           DEB_PACKAGE_NAME="mpv-lgpl_${MPV_VERSION}-1_amd64.deb"
           DEB_DIR="debian_pkg"
           MPV_BUILD_DIR="mpv/build"
@@ -49,15 +78,12 @@ jobs:
           mkdir -p "$DEB_DIR/usr/local/lib/x86_64-linux-gnu"
           mkdir -p "$DEB_DIR/DEBIAN"
 
-          # ファイルをコピー
           cp "$MPV_BUILD_DIR/mpv" "$DEB_DIR/usr/local/bin/"
           cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/"
 
-          # libmpv.soのシンボリックリンクを作成
           (cd "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
           (cd "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/" && ln -s libmpv.so.2 libmpv.so)
 
-          # controlファイルを作成
           cat > "$DEB_DIR/DEBIAN/control" <<EOF
           Package: mpv-lgpl
           Version: ${MPV_VERSION}
@@ -71,28 +97,23 @@ jobs:
           Depends: libavcodec-dev, libavfilter-dev, libavformat-dev, libswresample-dev, libswscale-dev, libjpeg-dev, libx11-dev, libxext-dev, libxinerama-dev, libfreetype6-dev, libfontconfig-dev, libfribidi-dev, libharfbuzz-dev, libass-dev
           EOF
 
-          # debパッケージをビルド
           dpkg-deb --build "$DEB_DIR" "$DEB_PACKAGE_NAME"
           echo "DEB_PATH=$DEB_PACKAGE_NAME" >> "$GITHUB_OUTPUT"
       
-      - name: Upload deb package to a temporary artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mpv-lgpl-deb-package
-          path: ${{ steps.create-package.outputs.DEB_PATH }}
-
       - name: Create GitHub Release
         id: create_release
+        if: env.BUILD_REQUIRED == 'true'
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          tag_name: ${{ env.NEW_TAG }}
+          release_name: Release ${{ env.NEW_TAG }}
           draft: false
           prerelease: false
 
       - name: Upload Release Asset
+        if: env.BUILD_REQUIRED == 'true'
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
