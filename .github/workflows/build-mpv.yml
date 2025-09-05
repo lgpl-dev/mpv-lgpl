@@ -289,16 +289,26 @@ jobs:
 
         cp "$BUILD_DIR/bin/mpv" "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
 
-        export DYLD_LIBRARY_PATH="$BUILD_DIR/lib"
+        echo "--- Debugging: Output of otool -L ---"
+        otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
+        echo "-------------------------------------"
 
         LIBS_TO_COPY=$(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | \
                            grep -E 'lib\.dylib' | \
                            grep -v 'libSystem|libobjc|libunwind' | \
-                           awk '{print $1}')
+                           awk '{print $1}' | \
+                           sed 's/@rpath\///g' | \
+                           xargs -I {} echo "$BUILD_DIR/lib/{}")
+
+        echo "--- Debugging: Files to be copied ---"
+        echo "$LIBS_TO_COPY"
+        echo "------------------------------------"
         
-        for LIB in $LIBS_TO_COPY; do
-            cp -L "$LIB" "$FINAL_PKG_DIR/Contents/Frameworks/"
-        done
+        if [ -n "$LIBS_TO_COPY" ]; then
+          for LIB in $LIBS_TO_COPY; do
+              cp -L "$LIB" "$FINAL_PKG_DIR/Contents/Frameworks/"
+          done
+        fi
 
         for LIB in "$FINAL_PKG_DIR/Contents/Frameworks"/*; do
             install_name_tool -id "@executable_path/../Frameworks/$(basename "$LIB")" "$LIB"
@@ -372,7 +382,7 @@ jobs:
           
           if [ "$UPLOAD_URL" == "null" ]; then
             echo "Error: Failed to get upload URL."
-            exit 1
+            exit 1;
           fi
 
           for PACKAGE_FILE in ./artifacts/*/*; do
