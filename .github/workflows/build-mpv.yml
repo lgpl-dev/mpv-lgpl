@@ -73,7 +73,6 @@ jobs:
       - name: Create deb package with dpkg-deb
         id: create_package
         run: |
-          # Fetch the tag again to ensure it's not empty
           MPV_TAG_FULL=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
           MPV_VERSION=$(echo "$MPV_TAG_FULL" | sed 's/^v//')
 
@@ -115,7 +114,7 @@ jobs:
       - name: Create GitHub Release
         id: create_release
         if: env.BUILD_REQUIRED == 'true'
-        uses: actions/create-release@v1
+        uses: actions/create-release@v1.1.4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -126,7 +125,7 @@ jobs:
 
       - name: Upload Release Asset
         if: env.BUILD_REQUIRED == 'true'
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
