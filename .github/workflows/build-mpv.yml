@@ -2,10 +2,8 @@ name: Build LGPL mpv on Schedule
 
 on:
   schedule:
-    # 毎月1日9時（JST）に実行。UTCでは午前0時です。
     - cron: '0 0 1 * *'
   workflow_dispatch:
-    # 手動実行用
 
 jobs:
   build:
@@ -14,14 +12,26 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@v4
+      - name: Fetch all tags
+        run: git fetch --tags
+
       - name: Check for new release and fetch current version
         id: check_version
         run: |
           LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          CURRENT_RELEASE_TAG=$(git describe --tags --abbrev=0)
+          
+          # Check if there are any tags in your repository
+          if git tag --points-at HEAD | grep -q .; then
+            CURRENT_RELEASE_TAG=$(git describe --tags --abbrev=0)
+            echo "Current release tag: $CURRENT_RELEASE_TAG"
+          else
+            # If no tags exist, set a default value
+            CURRENT_RELEASE_TAG=""
+            echo "No existing tags found in your repository."
+          fi
 
           echo "Latest mpv tag: $LATEST_MPV_TAG"
-          echo "Current release tag: $CURRENT_RELEASE_TAG"
 
           if [ "$LATEST_MPV_TAG" != "$CURRENT_RELEASE_TAG" ]; then
             echo "A new version of mpv is available. Proceeding with the build."
@@ -37,10 +47,6 @@ jobs:
         run: |
           echo "Skipping build as no new version is available."
           exit 0
-
-      - uses: actions/checkout@v4
-      - name: Fetch all tags for accurate git describe
-        run: git fetch --tags
 
       - name: Install dependencies
         run: |
