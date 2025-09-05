@@ -73,7 +73,15 @@ jobs:
       - name: Create deb package with dpkg-deb
         id: create_package
         run: |
-          MPV_VERSION=$(echo ${{ env.NEW_TAG }} | sed 's/^v//')
+          # Fetch the tag again to ensure it's not empty
+          MPV_TAG_FULL=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          MPV_VERSION=$(echo "$MPV_TAG_FULL" | sed 's/^v//')
+
+          if [ -z "$MPV_VERSION" ]; then
+            echo "Error: Failed to retrieve MPV version. Exiting."
+            exit 1
+          fi
+
           DEB_PACKAGE_NAME="mpv-lgpl_${MPV_VERSION}-1_amd64.deb"
           DEB_DIR="debian_pkg"
           MPV_BUILD_DIR="mpv/build"
@@ -102,7 +110,6 @@ jobs:
           EOF
 
           dpkg-deb --build "$DEB_DIR" "$DEB_PACKAGE_NAME"
-          # Set the output variable using GITHUB_OUTPUT
           echo "deb_path=$DEB_PACKAGE_NAME" >> "$GITHUB_OUTPUT"
       
       - name: Create GitHub Release
@@ -124,7 +131,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          # Use the new output variable syntax
           asset_path: ${{ steps.create_package.outputs.deb_path }}
           asset_name: ${{ steps.create_package.outputs.deb_path }}
           asset_content_type: application/vnd.debian.binary-package
