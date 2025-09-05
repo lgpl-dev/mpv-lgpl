@@ -9,12 +9,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install build-essential git libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev checkinstall
+          sudo apt install -y build-essential git libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev checkinstall meson ninja-build
 
       - name: Build MPV
         run: |
@@ -25,7 +25,7 @@ jobs:
       - name: Create deb package
         run: |
           cd mpv-build
-          sudo checkinstall --pkgname=mpv --pkgversion=1:0.35.1 --pakdir=/tmp/
+          sudo checkinstall --pkgname=mpv --pkgversion=1:0.35.1 --maintainer=your_name --pakdir=/tmp/
           
       - name: Upload deb package as artifact
         uses: actions/upload-artifact@v4
