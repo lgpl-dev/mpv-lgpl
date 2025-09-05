@@ -112,7 +112,7 @@ jobs:
   build_macos:
     runs-on: macos-latest
     permissions:
-      contents: read
+      contents: write
     
     steps:
       - uses: actions/checkout@v4
@@ -141,39 +141,127 @@ jobs:
           echo "Skipping macOS build as no new version is available."
           exit 0
       
-      - name: Install dependencies via Homebrew
+      - name: Build macOS package
+        id: build_mac_pkg
         run: |
-          brew install meson ninja ffmpeg libplacebo libunibreak libass
+          set -e
+          
+          SCRIPT_DIR=$(pwd)
+          BUILD_DIR="$SCRIPT_DIR/local"
+          FINAL_PKG_DIR="mac_pkg"
+          mkdir -p "$BUILD_DIR"
+          
+          export PKG_CONFIG_PATH="$BUILD_DIR/lib/pkgconfig"
+          
+          echo "--- Building FFmpeg ---"
+          git clone https://github.com/FFmpeg/FFmpeg.git
+          cd FFmpeg
+          unset CC CXX LDFLAGS CPPFLAGS
+          ./configure \
+              --prefix="$BUILD_DIR" \
+              --disable-gpl --disable-nonfree --enable-shared --disable-static \
+              --disable-ffprobe --disable-ffplay --disable-doc --disable-stripping
+          gmake -j$(sysctl -n hw.ncpu)
+          gmake install
+          cd "$SCRIPT_DIR"
+          
+          echo "--- Building libplacebo ---"
+          git clone https://github.com/haasn/libplacebo.git
+          cd libplacebo
+          git submodule update --init
+          unset CC CXX LDFLAGS CPPFLAGS
+          meson setup \
+              --prefix="$BUILD_DIR" \
+              --libdir="$BUILD_DIR/lib" \
+              --includedir="$BUILD_DIR/include" \
+              builddir
+          ninja -C builddir
+          ninja -C builddir install
+          cd "$SCRIPT_DIR"
+          
+          echo "--- Building libunibreak ---"
+          git clone https://github.com/adah1972/libunibreak.git
+          cd libunibreak
+          export PKG_CONFIG_PATH="$BUILD_DIR/lib/pkgconfig"
+          unset CC CXX LDFLAGS CPPFLAGS
+          ./autogen.sh
+          ./configure \
+              --prefix="$BUILD_DIR" \
+              --libdir="$BUILD_DIR/lib" \
+              --includedir="$BUILD_DIR/include"
+          gmake -j$(sysctl -n hw.ncpu)
+          gmake install
+          cd "$SCRIPT_DIR"
+          
+          echo "--- Building libass ---"
+          git clone https://github.com/libass/libass.git
+          cd libass
+          export PKG_CONFIG_PATH="$BUILD_DIR/lib/pkgconfig"
+          unset CC CXX LDFLAGS CPPFLAGS
+          ./autogen.sh
+          ./configure \
+              --prefix="$BUILD_DIR" \
+              --libdir="$BUILD_DIR/lib" \
+              --includedir="$BUILD_DIR/include" \
+              --disable-static
+          gmake -j$(sysctl -n hw.ncpu)
+          gmake install
+          cd "$SCRIPT_DIR"
+          
+          echo "--- Building mpv ---"
+          git clone https://github.com/mpv-player/mpv.git
+          cd mpv
+          if [ -d "builddir" ]; then
+              meson setup --wipe builddir
+          fi
+          meson setup \
+              --prefix="$BUILD_DIR" \
+              --libdir="$BUILD_DIR/lib" \
+              --includedir="$BUILD_DIR/include" \
+              -Dlibmpv=true \
+              builddir
+          ninja -C builddir
+          ninja -C builddir install
+          cd "$SCRIPT_DIR"
 
-      - name: Build mpv
-        run: |
+          echo "--- Creating self-contained package ---"
           LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
           MPV_VERSION=$(echo "$LATEST_MPV_TAG" | sed 's/^v//')
-          
-          git clone --depth=1 https://github.com/mpv-player/mpv.git
-          cd mpv
-          meson setup build -Dgpl=false
-          ninja -C build
-
-      - name: Create package
-        id: create_package
-        run: |
-          MPV_TAG_FULL=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          MPV_VERSION=$(echo "$MPV_TAG_FULL" | sed 's/^v//')
           if [ -z "$MPV_VERSION" ]; then exit 1; fi
+
+          mkdir -p "$FINAL_PKG_DIR/Contents/MacOS"
+          mkdir -p "$FINAL_PKG_DIR/Contents/Frameworks"
+
+          # Copy mpv binary
+          cp "$BUILD_DIR/bin/mpv" "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
+
+          # Get dependencies and copy them to the Frameworks directory
+          for LIB in $(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | grep "$BUILD_DIR" | awk '{print $1}'); do
+              cp "$LIB" "$FINAL_PKG_DIR/Contents/Frameworks/"
+          done
+
+          # Fix dynamic library paths
+          for LIB in "$FINAL_PKG_DIR/Contents/Frameworks"/*; do
+              install_name_tool -id "@executable_path/../Frameworks/$(basename $LIB)" "$LIB"
+              for LIB_DEP in $(otool -L "$LIB" | grep "$BUILD_DIR" | awk '{print $1}'); do
+                  install_name_tool -change "$LIB_DEP" "@executable_path/../Frameworks/$(basename $LIB_DEP)" "$LIB"
+              done
+          done
+          install_name_tool -id "@executable_path/../MacOS/mpv-lgpl" "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
+          for LIB_DEP in $(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | grep "$BUILD_DIR" | awk '{print $1}'); do
+              install_name_tool -change "$LIB_DEP" "@executable_path/../Frameworks/$(basename $LIB_DEP)" "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
+          done
+
+          # Create .tar.gz archive
+          tar -czf mpv-lgpl-${MPV_VERSION}-macos-arm64.tar.gz -C "$FINAL_PKG_DIR/.." $(basename "$FINAL_PKG_DIR")
           
-          mkdir -p mac_pkg
-          # Assuming `mpv` binary is built at `mpv/build/mpv`
-          # This part might need adjustment based on the actual build output path
-          cp mpv/build/mpv mac_pkg/mpv-lgpl-${MPV_VERSION}-macos-arm64
-          tar -czf mpv-lgpl-${MPV_VERSION}-macos-arm64.tar.gz mac_pkg/
           echo "package_path=mpv-lgpl-${MPV_VERSION}-macos-arm64.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: Upload macOS package as artifact
         uses: actions/upload-artifact@v4
         with:
           name: mpv-lgpl-macos-arm64
-          path: ${{ steps.create_package.outputs.package_path }}
+          path: ${{ steps.build_mac_pkg.outputs.package_path }}
 
   release:
     needs: [build_linux, build_macos]
