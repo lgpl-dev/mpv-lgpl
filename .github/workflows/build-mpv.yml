@@ -16,13 +16,17 @@ jobs:
           sudo apt update
           sudo apt install -y build-essential git libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev checkinstall meson ninja-build libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev
 
-      - name: Get mpv and libplacebo sources
+      - name: Build and install libplacebo
         run: |
-          git clone --depth=1 https://github.com/mpv-player/mpv.git
           git clone --depth=1 https://github.com/haasn/libplacebo.git
-          mv libplacebo mpv/subprojects/
+          cd libplacebo
+          meson setup build
+          sudo ninja -C build install
 
-      - name: Configure and Build mpv with LGPL option
+      - name: Get mpv source
+        run: git clone --depth=1 https://github.com/mpv-player/mpv.git
+
+      - name: Configure and build mpv with LGPL option
         run: |
           cd mpv
           meson setup build -Dgpl=false
