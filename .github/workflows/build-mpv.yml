@@ -1,121 +1,4 @@
-name: Build LGPL mpv Multi-Arch & macOS
-
-on:
-  schedule:
-    - cron: '0 0 1 * *'
-  workflow_dispatch:
-
-jobs:
-  build_linux:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    
-    strategy:
-      matrix:
-        arch: [amd64, arm64, armhf]
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fetch all tags
-        run: git fetch --tags
-
-      - name: Check if Linux package for current version exists
-        id: check_linux_pkg
-        run: |
-          LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          PKG_NAME="mpv-lgpl_$(echo $LATEST_MPV_TAG | sed 's/^v//')-1_${{ matrix.arch }}.deb"
-          
-          # Check if the package exists in the latest release's assets
-          RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq '.assets[].name')
-          
-          if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
-            echo "::set-output name=SKIP_BUILD::true"
-            echo "Linux package for ${{ matrix.arch }} already exists. Skipping build."
-          else
-            echo "::set-output name=SKIP_BUILD::false"
-            echo "Linux package for ${{ matrix.arch }} not found. Proceeding with build."
-          fi
-          
-      - name: Skip Linux build if package exists
-        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'true'
-        run: |
-          echo "Build skipped."
-
-      - name: Set up QEMU
-        if: matrix.arch != 'amd64' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-
-      - name: Install dependencies for ${{ matrix.arch }}
-        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
-        run: |
-          sudo apt update
-          sudo apt install -y build-essential git meson ninja-build devscripts \
-              libavcodec-dev libavfilter-dev libavformat-dev libswscale-dev libswresample-dev \
-              libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
-              libfribidi-dev libharfbuzz-dev libass-dev
-
-      - name: Build and install libplacebo for ${{ matrix.arch }}
-        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
-        run: |
-          git clone --depth=1 --recursive https://github.com/haasn/libplacebo.git
-          cd libplacebo
-          meson setup build
-          sudo ninja -C build install
-
-      - name: Get mpv source for ${{ matrix.arch }}
-        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
-        run: git clone --depth=1 https://github.com/mpv-player/mpv.git
-
-      - name: Configure and build mpv with LGPL option for ${{ matrix.arch }}
-        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
-        run: |
-          cd mpv
-          meson setup build -Dgpl=false
-          ninja -C build
-
-      - name: Create deb package for ${{ matrix.arch }}
-        id: create_package
-        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
-        run: |
-          MPV_TAG_FULL=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          MPV_VERSION=$(echo "$MPV_TAG_FULL" | sed 's/^v//')
-          if [ -z "$MPV_VERSION" ]; then exit 1; fi
-          DEB_PACKAGE_NAME="mpv-lgpl_${MPV_VERSION}-1_${{ matrix.arch }}.deb"
-          DEB_DIR="debian_pkg"
-          MPV_BUILD_DIR="mpv/build"
-          mkdir -p "$DEB_DIR/usr/local/bin"
-          mkdir -p "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu"
-          mkdir -p "$DEB_DIR/DEBIAN"
-          cp "$MPV_BUILD_DIR/mpv" "$DEB_DIR/usr/local/bin/"
-          cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu/"
-          (cd "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
-          (cd "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu/" && ln -s libmpv.so.2 libmpv.so)
-          cat > "$DEB_DIR/DEBIAN/control" <<EOF
-          Package: mpv-lgpl
-          Version: ${MPV_VERSION}
-          Section: video
-          Priority: optional
-          Architecture: ${{ matrix.arch }}
-          Maintainer: Your Name <your.email@example.com>
-          Description: A media player LGPLv2.1 or later.
-           mpv is a free and open-source command-line media player.
-           This package is built with LGPLv2.1+ only files.
-          Depends: libavcodec-dev, libavfilter-dev, libavformat-dev, libswresample-dev, libswscale-dev, libjpeg-dev, libx11-dev, libxext-dev, libxinerama-dev, libfreetype6-dev, libfontconfig-dev, libfribidi-dev, libharfbuzz-dev, libass-dev
-          EOF
-          dpkg-deb --build "$DEB_DIR" "$DEB_PACKAGE_NAME"
-          echo "deb_path=$DEB_PACKAGE_NAME" >> "$GITHUB_OUTPUT"
-      
-      - name: Upload deb package as artifact
-        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
-        uses: actions/upload-artifact@v4
-        with:
-          name: mpv-lgpl-${{ matrix.arch }}
-          path: ${{ steps.create_package.outputs.deb_path }}
-  
-  build_macos:
+build_macos:
     runs-on: macos-latest
     permissions:
       contents: write
@@ -131,15 +14,22 @@ jobs:
           LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
           PKG_NAME="mpv-lgpl-$(echo $LATEST_MPV_TAG | sed 's/^v//')-macos-arm64.tar.gz"
           
-          # Check if the package exists in the latest release's assets
-          RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq '.assets[].name')
+          # Check if the release tag exists in our repository
+          RELEASE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG")
           
-          if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
-            echo "::set-output name=SKIP_BUILD::true"
-            echo "macOS package already exists. Skipping build."
-          else
+          if [ "$RELEASE_STATUS" -ne 200 ]; then
+            echo "Release tag $LATEST_MPV_TAG not found in our repo. Proceeding with build."
             echo "::set-output name=SKIP_BUILD::false"
-            echo "macOS package not found. Proceeding with build."
+          else
+            # Release exists, now check for the specific asset
+            RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq '.assets[].name')
+            if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
+              echo "macOS package already exists. Skipping build."
+              echo "::set-output name=SKIP_BUILD::true"
+            else
+              echo "macOS package not found. Proceeding with build."
+              echo "::set-output name=SKIP_BUILD::false"
+            fi
           fi
 
       - name: Skip macOS build if package exists
