@@ -9,7 +9,7 @@ jobs:
   build_linux:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     
     strategy:
       matrix:
@@ -20,36 +20,36 @@ jobs:
       - name: Fetch all tags
         run: git fetch --tags
 
-      - name: Check for new release and fetch current version
-        id: check_version
+      - name: Check if Linux package for current version exists
+        id: check_linux_pkg
         run: |
           LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          if git tag --points-at HEAD | grep -q .; then
-            CURRENT_RELEASE_TAG=$(git describe --tags --abbrev=0)
+          PKG_NAME="mpv-lgpl_$(echo $LATEST_MPV_TAG | sed 's/^v//')-1_${{ matrix.arch }}.deb"
+          
+          # Check if the package exists in the latest release's assets
+          RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq '.assets[].name')
+          
+          if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
+            echo "::set-output name=SKIP_BUILD::true"
+            echo "Linux package for ${{ matrix.arch }} already exists. Skipping build."
           else
-            CURRENT_RELEASE_TAG=""
+            echo "::set-output name=SKIP_BUILD::false"
+            echo "Linux package for ${{ matrix.arch }} not found. Proceeding with build."
           fi
-          if [ "$LATEST_MPV_TAG" != "$CURRENT_RELEASE_TAG" ]; then
-            echo "BUILD_REQUIRED=true" >> "$GITHUB_ENV"
-            echo "NEW_TAG=$LATEST_MPV_TAG" >> "$GITHUB_ENV"
-          else
-            echo "BUILD_REQUIRED=false" >> "$GITHUB_ENV"
-          fi
-
-      - name: Skip Linux build if no new version
-        if: env.BUILD_REQUIRED == 'false'
+          
+      - name: Skip Linux build if package exists
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'true'
         run: |
-          echo "Skipping Linux build as no new version is available."
-          exit 0
+          echo "Build skipped."
 
       - name: Set up QEMU
-        if: matrix.arch != 'amd64' && env.BUILD_REQUIRED == 'true'
+        if: matrix.arch != 'amd64' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         uses: docker/setup-qemu-action@v3
         with:
           platforms: all
 
       - name: Install dependencies for ${{ matrix.arch }}
-        if: env.BUILD_REQUIRED == 'true'
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
           sudo apt update
           sudo apt install -y build-essential git meson ninja-build devscripts \
@@ -58,7 +58,7 @@ jobs:
               libfribidi-dev libharfbuzz-dev libass-dev
 
       - name: Build and install libplacebo for ${{ matrix.arch }}
-        if: env.BUILD_REQUIRED == 'true'
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
           git clone --depth=1 --recursive https://github.com/haasn/libplacebo.git
           cd libplacebo
@@ -66,11 +66,11 @@ jobs:
           sudo ninja -C build install
 
       - name: Get mpv source for ${{ matrix.arch }}
-        if: env.BUILD_REQUIRED == 'true'
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: git clone --depth=1 https://github.com/mpv-player/mpv.git
 
       - name: Configure and build mpv with LGPL option for ${{ matrix.arch }}
-        if: env.BUILD_REQUIRED == 'true'
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
           cd mpv
           meson setup build -Dgpl=false
@@ -78,7 +78,7 @@ jobs:
 
       - name: Create deb package for ${{ matrix.arch }}
         id: create_package
-        if: env.BUILD_REQUIRED == 'true'
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
           MPV_TAG_FULL=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
           MPV_VERSION=$(echo "$MPV_TAG_FULL" | sed 's/^v//')
@@ -109,7 +109,7 @@ jobs:
           echo "deb_path=$DEB_PACKAGE_NAME" >> "$GITHUB_OUTPUT"
       
       - name: Upload deb package as artifact
-        if: env.BUILD_REQUIRED == 'true'
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: mpv-lgpl-${{ matrix.arch }}
@@ -118,38 +118,38 @@ jobs:
   build_macos:
     runs-on: macos-latest
     permissions:
-      contents: read
+      contents: write
     
     steps:
       - uses: actions/checkout@v4
       - name: Fetch all tags
         run: git fetch --tags
 
-      - name: Check for new release and fetch current version
-        id: check_version
+      - name: Check if macOS package for current version exists
+        id: check_macos_pkg
         run: |
           LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          if git tag --points-at HEAD | grep -q .; then
-            CURRENT_RELEASE_TAG=$(git describe --tags --abbrev=0)
+          PKG_NAME="mpv-lgpl-$(echo $LATEST_MPV_TAG | sed 's/^v//')-macos-arm64.tar.gz"
+          
+          # Check if the package exists in the latest release's assets
+          RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq '.assets[].name')
+          
+          if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
+            echo "::set-output name=SKIP_BUILD::true"
+            echo "macOS package already exists. Skipping build."
           else
-            CURRENT_RELEASE_TAG=""
+            echo "::set-output name=SKIP_BUILD::false"
+            echo "macOS package not found. Proceeding with build."
           fi
-          if [ "$LATEST_MPV_TAG" != "$CURRENT_RELEASE_TAG" ]; then
-            echo "BUILD_REQUIRED=true" >> "$GITHUB_ENV"
-            echo "NEW_TAG=$LATEST_MPV_TAG" >> "$GITHUB_ENV"
-          else
-            echo "BUILD_REQUIRED=false" >> "$GITHUB_ENV"
-          fi
-      
-      - name: Skip macOS build if no new version
-        if: env.BUILD_REQUIRED == 'false'
+
+      - name: Skip macOS build if package exists
+        if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'true'
         run: |
-          echo "Skipping macOS build as no new version is available."
-          exit 0
+          echo "Build skipped."
       
       - name: Build macOS package
         id: build_mac_pkg
-        if: env.BUILD_REQUIRED == 'true'
+        if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'false'
         run: |
           set -e
           
@@ -239,15 +239,12 @@ jobs:
           mkdir -p "$FINAL_PKG_DIR/Contents/MacOS"
           mkdir -p "$FINAL_PKG_DIR/Contents/Frameworks"
 
-          # Copy mpv binary
           cp "$BUILD_DIR/bin/mpv" "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
 
-          # Get dependencies and copy them to the Frameworks directory
           for LIB in $(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | grep "$BUILD_DIR" | awk '{print $1}'); do
               cp "$LIB" "$FINAL_PKG_DIR/Contents/Frameworks/"
           done
 
-          # Fix dynamic library paths
           for LIB in "$FINAL_PKG_DIR/Contents/Frameworks"/*; do
               install_name_tool -id "@executable_path/../Frameworks/$(basename $LIB)" "$LIB"
               for LIB_DEP in $(otool -L "$LIB" | grep "$BUILD_DIR" | awk '{print $1}'); do
@@ -259,13 +256,12 @@ jobs:
               install_name_tool -change "$LIB_DEP" "@executable_path/../Frameworks/$(basename $LIB_DEP)" "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
           done
 
-          # Create .tar.gz archive
           tar -czf mpv-lgpl-${MPV_VERSION}-macos-arm64.tar.gz -C "$FINAL_PKG_DIR/.." $(basename "$FINAL_PKG_DIR")
           
           echo "package_path=mpv-lgpl-${MPV_VERSION}-macos-arm64.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: Upload macOS package as artifact
-        if: env.BUILD_REQUIRED == 'true'
+        if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: mpv-lgpl-macos-arm64
