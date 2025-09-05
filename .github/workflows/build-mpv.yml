@@ -259,12 +259,12 @@ jobs:
         git clone https://github.com/libjpeg-turbo/libjpeg-turbo.git
         cd libjpeg-turbo
         unset CC CXX LDFLAGS CPPFLAGS
-        ./configure \
-            --prefix="$BUILD_DIR" \
-            --libdir="$BUILD_DIR/lib" \
-            --includedir="$BUILD_DIR/include"
-        gmake -j$(sysctl -n hw.ncpu)
-        gmake install
+        mkdir build
+        cd build
+        cmake .. \
+            -DCMAKE_INSTALL_PREFIX="$BUILD_DIR"
+        cmake --build . -- -j$(sysctl -n hw.ncpu)
+        cmake --install .
         cd "$SCRIPT_DIR"
 
     - name: Build little-cms2
