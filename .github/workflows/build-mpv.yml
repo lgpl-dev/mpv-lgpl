@@ -26,7 +26,6 @@ jobs:
           LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
           PKG_NAME="mpv-lgpl_$(echo $LATEST_MPV_TAG | sed 's/^v//')-1_${{ matrix.arch }}.deb"
           
-          # Check if the package exists in the latest release's assets
           RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq -r 'if .assets then .assets[].name else "" end')
           
           if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
@@ -103,8 +102,7 @@ jobs:
           Description: A media player LGPLv2.1 or later.
            mpv is a free and open-source command-line media player.
            This package is built with LGPLv2.1+ only files.
-          Depends: libavcodec-dev, libavfilter-dev, libavformat-dev, libswresample-dev, libswscale-dev, libjpeg-dev, libx11-dev, libxext-dev, libxinerama-dev, libfreetype6-dev libfontconfig-dev \
-          libfribidi-dev libharfbuzz-dev libass-dev
+          Depends: libavcodec-dev, libavfilter-dev, libavformat-dev, libswresample-dev, libswscale-dev, libjpeg-dev, libx11-dev, libxext-dev, libxinerama-dev, libfreetype6-dev, libfontconfig-dev, libfribidi-dev, libharfbuzz-dev, libass-dev
           EOF
           dpkg-deb --build "$DEB_DIR" "$DEB_PACKAGE_NAME"
           echo "deb_path=$DEB_PACKAGE_NAME" >> "$GITHUB_OUTPUT"
@@ -132,7 +130,6 @@ jobs:
           LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
           PKG_NAME="mpv-lgpl-$(echo $LATEST_MPV_TAG | sed 's/^v//')-macos-arm64.tar.gz"
           
-          # Check if the package exists in the latest release's assets
           RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq -r 'if .assets then .assets[].name else "" end')
           
           if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
@@ -147,7 +144,12 @@ jobs:
         if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'true'
         run: |
           echo "Build skipped."
-      
+
+      - name: Install dependencies via Homebrew
+        if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'false'
+        run: |
+          brew install gmake
+
       - name: Build macOS package
         id: build_mac_pkg
         if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'false'
@@ -169,8 +171,8 @@ jobs:
               --prefix="$BUILD_DIR" \
               --disable-gpl --disable-nonfree --enable-shared --disable-static \
               --disable-ffprobe --disable-ffplay --disable-doc --disable-stripping
-          gmake -j$(sysctl -n hw.ncpu)
-          gmake install
+          make -j$(sysctl -n hw.ncpu)
+          make install
           cd "$SCRIPT_DIR"
           
           echo "--- Building libplacebo ---"
@@ -197,8 +199,8 @@ jobs:
               --prefix="$BUILD_DIR" \
               --libdir="$BUILD_DIR/lib" \
               --includedir="$BUILD_DIR/include"
-          gmake -j$(sysctl -n hw.ncpu)
-          gmake install
+          make -j$(sysctl -n hw.ncpu)
+          make install
           cd "$SCRIPT_DIR"
           
           echo "--- Building libass ---"
@@ -212,8 +214,8 @@ jobs:
               --libdir="$BUILD_DIR/lib" \
               --includedir="$BUILD_DIR/include" \
               --disable-static
-          gmake -j$(sysctl -n hw.ncpu)
-          gmake install
+          make -j$(sysctl -n hw.ncpu)
+          make install
           cd "$SCRIPT_DIR"
           
           echo "--- Building mpv ---"
