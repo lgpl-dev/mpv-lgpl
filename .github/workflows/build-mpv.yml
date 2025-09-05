@@ -94,8 +94,6 @@ jobs:
           name: mpv-lgpl-${{ matrix.arch }}
           path: ${{ steps.create_package.outputs.deb_path }}
   
-  ---
-  
   release:
     needs: [build]
     runs-on: ubuntu-latest
