@@ -249,6 +249,42 @@ jobs:
         gmake install
         cd "$SCRIPT_DIR"
 
+    - name: Build jpeg-turbo
+      run: |
+        set -e
+        SCRIPT_DIR=$(pwd)
+        BUILD_DIR="$SCRIPT_DIR/local"
+        export PKG_CONFIG_PATH="$BUILD_DIR/lib/pkgconfig"
+        echo "--- Building jpeg-turbo ---"
+        git clone https://github.com/libjpeg-turbo/libjpeg-turbo.git
+        cd libjpeg-turbo
+        unset CC CXX LDFLAGS CPPFLAGS
+        ./configure \
+            --prefix="$BUILD_DIR" \
+            --libdir="$BUILD_DIR/lib" \
+            --includedir="$BUILD_DIR/include"
+        gmake -j$(sysctl -n hw.ncpu)
+        gmake install
+        cd "$SCRIPT_DIR"
+
+    - name: Build little-cms2
+      run: |
+        set -e
+        SCRIPT_DIR=$(pwd)
+        BUILD_DIR="$SCRIPT_DIR/local"
+        export PKG_CONFIG_PATH="$BUILD_DIR/lib/pkgconfig"
+        echo "--- Building little-cms2 ---"
+        git clone https://github.com/mm2/Little-CMS.git
+        cd Little-CMS
+        unset CC CXX LDFLAGS CPPFLAGS
+        ./configure \
+            --prefix="$BUILD_DIR" \
+            --libdir="$BUILD_DIR/lib" \
+            --includedir="$BUILD_DIR/include"
+        gmake -j$(sysctl -n hw.ncpu)
+        gmake install
+        cd "$SCRIPT_DIR"
+
     - name: Build mpv
       run: |
         set -e
@@ -295,7 +331,7 @@ jobs:
 
         LIBS_TO_COPY=$(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | \
                            grep -E 'lib\.dylib' | \
-                           grep -v 'libSystem|libobjc|libunwind|/opt/homebrew' | \
+                           grep -v 'libSystem|libobjc|libunwind' | \
                            awk '{print $1}' | \
                            xargs -I {} basename {} | \
                            xargs -I {} echo "$BUILD_DIR/lib/{}")
