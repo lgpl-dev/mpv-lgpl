@@ -36,7 +36,7 @@ jobs:
             echo "BUILD_REQUIRED=false" >> "$GITHUB_ENV"
           fi
 
-      - name: Skip build if no new version
+      - name: Skip Linux build if no new version
         if: env.BUILD_REQUIRED == 'false'
         run: |
           echo "Skipping Linux build as no new version is available."
@@ -135,7 +135,7 @@ jobs:
             echo "BUILD_REQUIRED=false" >> "$GITHUB_ENV"
           fi
       
-      - name: Skip build if no new version
+      - name: Skip macOS build if no new version
         if: env.BUILD_REQUIRED == 'false'
         run: |
           echo "Skipping macOS build as no new version is available."
