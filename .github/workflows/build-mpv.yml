@@ -1,4 +1,4 @@
-name: Build LGPL mpv on Schedule
+name: Build LGPL mpv Multi-Arch
 
 on:
   schedule:
@@ -10,6 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    
+    strategy:
+      matrix:
+        arch: [amd64, arm64, armhf]
 
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +50,13 @@ jobs:
           echo "Skipping build as no new version is available."
           exit 0
 
-      - name: Install dependencies
+      - name: Set up QEMU
+        if: matrix.arch != 'amd64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - name: Install dependencies for ${{ matrix.arch }}
         run: |
           sudo apt update
           sudo apt install -y build-essential git meson ninja-build devscripts \
@@ -54,23 +64,23 @@ jobs:
               libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
               libfribidi-dev libharfbuzz-dev libass-dev
 
-      - name: Build and install libplacebo
+      - name: Build and install libplacebo for ${{ matrix.arch }}
         run: |
           git clone --depth=1 --recursive https://github.com/haasn/libplacebo.git
           cd libplacebo
           meson setup build
           sudo ninja -C build install
 
-      - name: Get mpv source
+      - name: Get mpv source for ${{ matrix.arch }}
         run: git clone --depth=1 https://github.com/mpv-player/mpv.git
 
-      - name: Configure and build mpv with LGPL option
+      - name: Configure and build mpv with LGPL option for ${{ matrix.arch }}
         run: |
           cd mpv
           meson setup build -Dgpl=false
           ninja -C build
 
-      - name: Create deb package with dpkg-deb
+      - name: Create deb package with dpkg-deb for ${{ matrix.arch }}
         id: create_package
         run: |
           MPV_TAG_FULL=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
@@ -81,26 +91,26 @@ jobs:
             exit 1
           fi
 
-          DEB_PACKAGE_NAME="mpv-lgpl_${MPV_VERSION}-1_amd64.deb"
+          DEB_PACKAGE_NAME="mpv-lgpl_${MPV_VERSION}-1_${{ matrix.arch }}.deb"
           DEB_DIR="debian_pkg"
           MPV_BUILD_DIR="mpv/build"
 
           mkdir -p "$DEB_DIR/usr/local/bin"
-          mkdir -p "$DEB_DIR/usr/local/lib/x86_64-linux-gnu"
+          mkdir -p "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu"
           mkdir -p "$DEB_DIR/DEBIAN"
 
           cp "$MPV_BUILD_DIR/mpv" "$DEB_DIR/usr/local/bin/"
-          cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/"
+          cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu/"
 
-          (cd "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
-          (cd "$DEB_DIR/usr/local/lib/x86_64-linux-gnu/" && ln -s libmpv.so.2 libmpv.so)
+          (cd "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
+          (cd "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu/" && ln -s libmpv.so.2 libmpv.so)
 
           cat > "$DEB_DIR/DEBIAN/control" <<EOF
           Package: mpv-lgpl
           Version: ${MPV_VERSION}
           Section: video
           Priority: optional
-          Architecture: amd64
+          Architecture: ${{ matrix.arch }}
           Maintainer: Your Name <your.email@example.com>
           Description: A media player LGPLv2.1 or later.
            mpv is a free and open-source command-line media player.
@@ -112,30 +122,61 @@ jobs:
           echo "deb_path=$DEB_PACKAGE_NAME" >> "$GITHUB_OUTPUT"
       
       - name: Create GitHub Release and Upload Asset
-        if: env.BUILD_REQUIRED == 'true'
+        if: env.BUILD_REQUIRED == 'true' && matrix.arch == 'amd64'
+        id: release_and_upload
         run: |
           DEB_PATH="${{ steps.create_package.outputs.deb_path }}"
           TAG_NAME="${{ env.NEW_TAG }}"
           REPO_NAME="${{ github.repository }}"
           GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          UPLOAD_URL=""
 
-          # 1. Create a new release
+          # Only create the release once (using amd64 job)
           RELEASE_RESPONSE=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/json" -d "{
             \"tag_name\": \"$TAG_NAME\",
             \"name\": \"Release $TAG_NAME\",
             \"draft\": false,
             \"prerelease\": false
           }" "https://api.github.com/repos/$REPO_NAME/releases")
+          
+          echo "$RELEASE_RESPONSE" | grep -q "upload_url"
+          if [ $? -ne 0 ]; then
+            echo "Release creation failed. Checking for existing release..."
+            RELEASE_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$REPO_NAME/releases/tags/$TAG_NAME")
+          fi
 
           UPLOAD_URL=$(echo "$RELEASE_RESPONSE" | grep '"upload_url":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/{?name,label}//')
 
           if [ -z "$UPLOAD_URL" ]; then
-            echo "Error: Failed to create GitHub release or get upload URL."
+            echo "Error: Failed to get upload URL."
             echo "$RELEASE_RESPONSE"
             exit 1
           fi
 
-          # 2. Upload the release asset
+          # Upload the release asset
+          curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Content-Type: application/vnd.debian.binary-package" \
+          --data-binary "@$DEB_PATH" \
+          "$UPLOAD_URL?name=$(basename "$DEB_PATH")"
+
+      - name: Upload Release Asset (for non-amd64 jobs)
+        if: env.BUILD_REQUIRED == 'true' && matrix.arch != 'amd64'
+        run: |
+          DEB_PATH="${{ steps.create_package.outputs.deb_path }}"
+          TAG_NAME="${{ env.NEW_TAG }}"
+          REPO_NAME="${{ github.repository }}"
+          GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}"
+
+          # Get upload URL from the existing release
+          RELEASE_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$REPO_NAME/releases/tags/$TAG_NAME")
+          UPLOAD_URL=$(echo "$RELEASE_RESPONSE" | grep '"upload_url":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/{?name,label}//')
+
+          if [ -z "$UPLOAD_URL" ]; then
+            echo "Error: Failed to get upload URL from existing release."
+            exit 1
+          fi
+
+          # Upload the release asset
           curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
           -H "Content-Type: application/vnd.debian.binary-package" \
           --data-binary "@$DEB_PATH" \
