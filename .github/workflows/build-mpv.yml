@@ -28,7 +28,7 @@ jobs:
           sudo checkinstall --pkgname=mpv --pkgversion=1:0.35.1 --pakdir=/tmp/
           
       - name: Upload deb package as artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: mpv-deb-package
           path: /tmp/*.deb
