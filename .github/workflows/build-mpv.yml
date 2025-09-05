@@ -142,6 +142,15 @@ jobs:
           echo "Build skipped."
           exit 0 # This will stop the workflow for macOS, but allow other jobs to continue.
 
+      - name: Cache Homebrew dependencies
+        id: cache-brew
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/opt
+          key: ${{ runner.os }}-brew-deps-v1-${{ hashFiles('**/mpv.c') }}
+          restore-keys: |
+            ${{ runner.os }}-brew-deps-v1-
+
       - name: Install dependencies via Homebrew
         run: |
           brew install make meson ninja autoconf automake libtool pkg-config harfbuzz fontconfig freetype fribidi
@@ -155,9 +164,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: local
-          key: ${{ runner.os }}-macos-build-deps-v1-${{ hashFiles('**/mpv.c') }}
+          key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
           restore-keys: |
-            ${{ runner.os }}-macos-build-deps-v1-
+            ${{ runner.os }}-macos-build-deps-v2-
             
   build_ffmpeg:
     needs: setup_macos
@@ -193,9 +202,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: local
-          key: ${{ runner.os }}-macos-build-deps-v1-${{ hashFiles('**/mpv.c') }}
+          key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
           restore-keys: |
-            ${{ runner.os }}-macos-build-deps-v1-
+            ${{ runner.os }}-macos-build-deps-v2-
 
       - name: Build FFmpeg
         run: |
@@ -249,9 +258,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: local
-          key: ${{ runner.os }}-macos-build-deps-v1-${{ hashFiles('**/mpv.c') }}
+          key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
           restore-keys: |
-            ${{ runner.os }}-macos-build-deps-v1-
+            ${{ runner.os }}-macos-build-deps-v2-
 
       - name: Build libplacebo
         run: |
@@ -307,9 +316,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: local
-          key: ${{ runner.os }}-macos-build-deps-v1-${{ hashFiles('**/mpv.c') }}
+          key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
           restore-keys: |
-            ${{ runner.os }}-macos-build-deps-v1-
+            ${{ runner.os }}-macos-build-deps-v2-
 
       - name: Build libunibreak
         run: |
@@ -364,9 +373,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: local
-          key: ${{ runner.os }}-macos-build-deps-v1-${{ hashFiles('**/mpv.c') }}
+          key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
           restore-keys: |
-            ${{ runner.os }}-macos-build-deps-v1-
+            ${{ runner.os }}-macos-build-deps-v2-
 
       - name: Build libass
         run: |
@@ -422,9 +431,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: local
-          key: ${{ runner.os }}-macos-build-deps-v1-${{ hashFiles('**/mpv.c') }}
+          key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
           restore-keys: |
-            ${{ runner.os }}-macos-build-deps-v1-
+            ${{ runner.os }}-macos-build-deps-v2-
             
       - name: Build mpv
         run: |
@@ -482,9 +491,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: local
-          key: ${{ runner.os }}-macos-build-deps-v1-${{ hashFiles('**/mpv.c') }}
+          key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
           restore-keys: |
-            ${{ runner.os }}-macos-build-deps-v1-
+            ${{ runner.os }}-macos-build-deps-v2-
             
       - name: Create self-contained package
         id: build_mac_pkg
