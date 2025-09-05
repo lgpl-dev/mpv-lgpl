@@ -331,14 +331,17 @@ jobs:
         echo "------------------------------------------"
         
         # Now, relink the libraries inside the Frameworks directory
-        for LIB in "$FINAL_PKG_DIR/Contents/Frameworks"/*; do
-            install_name_tool -id "@executable_path/../Frameworks/$(basename "$LIB")" "$LIB"
-            
-            LIB_DEPS_TO_CHANGE=$(otool -L "$LIB" | grep -E 'lib\.dylib' | grep -v 'libSystem|libobjc|@executable_path|libunwind|libswift' | awk '{print $1}')
-            for LIB_DEP in $LIB_DEPS_TO_CHANGE; do
-                install_name_tool -change "$LIB_DEP" "@executable_path/../Frameworks/$(basename "$LIB_DEP")" "$LIB"
+        # Check if any files exist before the loop to avoid errors on empty directories
+        if [ -n "$(find "$FINAL_PKG_DIR/Contents/Frameworks/" -name '*.dylib')" ]; then
+            for LIB in "$FINAL_PKG_DIR/Contents/Frameworks"/*; do
+                install_name_tool -id "@executable_path/../Frameworks/$(basename "$LIB")" "$LIB"
+                
+                LIB_DEPS_TO_CHANGE=$(otool -L "$LIB" | grep -E 'lib\.dylib' | grep -v 'libSystem|libobjc|@executable_path|libunwind|libswift' | awk '{print $1}')
+                for LIB_DEP in $LIB_DEPS_TO_CHANGE; do
+                    install_name_tool -change "$LIB_DEP" "@executable_path/../Frameworks/$(basename "$LIB_DEP")" "$LIB"
+                done
             done
-        done
+        fi
         
         MPV_DEPS_TO_CHANGE=$(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | grep -E 'lib\.dylib' | grep -v 'libSystem|libobjc|@executable_path|libunwind|libswift' | awk '{print $1}')
         for MPV_DEP in $MPV_DEPS_TO_CHANGE; do
