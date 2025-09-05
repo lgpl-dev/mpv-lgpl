@@ -14,11 +14,13 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          # FFmpeg開発用ライブラリを追加
           sudo apt install -y build-essential git libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev checkinstall meson ninja-build libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev
 
-      - name: Get mpv source
-        run: git clone --depth=1 https://github.com/mpv-player/mpv.git
+      - name: Get mpv and libplacebo sources
+        run: |
+          git clone --depth=1 https://github.com/mpv-player/mpv.git
+          git clone --depth=1 https://github.com/haasn/libplacebo.git
+          mv libplacebo mpv/subprojects/
 
       - name: Configure and Build mpv with LGPL option
         run: |
