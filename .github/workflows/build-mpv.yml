@@ -177,13 +177,13 @@ jobs:
         set -e
         SCRIPT_DIR=$(pwd)
         BUILD_DIR="$SCRIPT_DIR/local"
-        export PKG_CONFIG_PATH="$BUILD_DIR/lib/pkgconfig"
+        export PKG_CONFIG_PATH="../local/lib/pkgconfig"
         echo "--- Building FFmpeg ---"
         git clone https://github.com/FFmpeg/FFmpeg.git
         cd FFmpeg
         unset CC CXX LDFLAGS CPPFLAGS
         ./configure \
-            --prefix="$BUILD_DIR" \
+            --prefix="../local" \
             --disable-gpl --disable-nonfree --enable-shared --disable-static \
             --disable-ffprobe --disable-ffplay --disable-doc --disable-stripping
         gmake -j$(sysctl -n hw.ncpu)
@@ -195,16 +195,16 @@ jobs:
         set -e
         SCRIPT_DIR=$(pwd)
         BUILD_DIR="$SCRIPT_DIR/local"
-        export PKG_CONFIG_PATH="$BUILD_DIR/lib/pkgconfig"
+        export PKG_CONFIG_PATH="../local/lib/pkgconfig"
         echo "--- Building libplacebo ---"
         git clone https://github.com/haasn/libplacebo.git
         cd libplacebo
         git submodule update --init
         unset CC CXX LDFLAGS CPPFLAGS
         meson setup \
-            --prefix="$BUILD_DIR" \
-            --libdir="$BUILD_DIR/lib" \
-            --includedir="$BUILD_DIR/include" \
+            --prefix="../local" \
+            --libdir="../local/lib" \
+            --includedir="../local/include" \
             builddir
         ninja -C builddir
         ninja -C builddir install
@@ -215,16 +215,16 @@ jobs:
         set -e
         SCRIPT_DIR=$(pwd)
         BUILD_DIR="$SCRIPT_DIR/local"
-        export PKG_CONFIG_PATH="$BUILD_DIR/lib/pkgconfig"
+        export PKG_CONFIG_PATH="../local/lib/pkgconfig"
         echo "--- Building libunibreak ---"
         git clone https://github.com/adah1972/libunibreak.git
         cd libunibreak
         unset CC CXX LDFLAGS CPPFLAGS
         ./autogen.sh
         ./configure \
-            --prefix="$BUILD_DIR" \
-            --libdir="$BUILD_DIR/lib" \
-            --includedir="$BUILD_DIR/include"
+            --prefix="../local" \
+            --libdir="../local/lib" \
+            --includedir="../local/include"
         gmake -j$(sysctl -n hw.ncpu)
         gmake install
         cd "$SCRIPT_DIR"
@@ -234,16 +234,16 @@ jobs:
         set -e
         SCRIPT_DIR=$(pwd)
         BUILD_DIR="$SCRIPT_DIR/local"
-        export PKG_CONFIG_PATH="$BUILD_DIR/lib/pkgconfig"
+        export PKG_CONFIG_PATH="../local/lib/pkgconfig"
         echo "--- Building libass ---"
         git clone https://github.com/libass/libass.git
         cd libass
         unset CC CXX LDFLAGS CPPFLAGS
         ./autogen.sh
         ./configure \
-            --prefix="$BUILD_DIR" \
-            --libdir="$BUILD_DIR/lib" \
-            --includedir="$BUILD_DIR/include" \
+            --prefix="../local" \
+            --libdir="../local/lib" \
+            --includedir="../local/include" \
             --disable-static
         gmake -j$(sysctl -n hw.ncpu)
         gmake install
@@ -254,7 +254,7 @@ jobs:
         set -e
         SCRIPT_DIR=$(pwd)
         BUILD_DIR="$SCRIPT_DIR/local"
-        export PKG_CONFIG_PATH="$BUILD_DIR/lib/pkgconfig"
+        export PKG_CONFIG_PATH="../local/lib/pkgconfig"
         echo "--- Building jpeg-turbo ---"
         git clone https://github.com/libjpeg-turbo/libjpeg-turbo.git
         cd libjpeg-turbo
@@ -262,7 +262,7 @@ jobs:
         mkdir build
         cd build
         cmake .. \
-            -DCMAKE_INSTALL_PREFIX="$BUILD_DIR"
+            -DCMAKE_INSTALL_PREFIX="../local"
         cmake --build . -- -j$(sysctl -n hw.ncpu)
         cmake --install .
         cd "$SCRIPT_DIR"
@@ -272,15 +272,15 @@ jobs:
         set -e
         SCRIPT_DIR=$(pwd)
         BUILD_DIR="$SCRIPT_DIR/local"
-        export PKG_CONFIG_PATH="$BUILD_DIR/lib/pkgconfig"
+        export PKG_CONFIG_PATH="../local/lib/pkgconfig"
         echo "--- Building little-cms2 ---"
         git clone https://github.com/mm2/Little-CMS.git
         cd Little-CMS
         unset CC CXX LDFLAGS CPPFLAGS
         meson setup \
-            --prefix="$BUILD_DIR" \
-            --libdir="$BUILD_DIR/lib" \
-            --includedir="$BUILD_DIR/include" \
+            --prefix="../local" \
+            --libdir="../local/lib" \
+            --includedir="../local/include" \
             builddir
         ninja -C builddir
         ninja -C builddir install
@@ -291,7 +291,7 @@ jobs:
         set -e
         SCRIPT_DIR=$(pwd)
         BUILD_DIR="$SCRIPT_DIR/local"
-        export PKG_CONFIG_PATH="$BUILD_DIR/lib/pkgconfig"
+        export PKG_CONFIG_PATH="../local/lib/pkgconfig"
         echo "--- Building mpv ---"
         git clone https://github.com/mpv-player/mpv.git
         cd mpv
@@ -299,9 +299,9 @@ jobs:
             meson setup --wipe builddir
         fi
         meson setup \
-            --prefix="$BUILD_DIR" \
-            --libdir="$BUILD_DIR/lib" \
-            --includedir="$BUILD_DIR/include" \
+            --prefix="../local" \
+            --libdir="../local/lib" \
+            --includedir="../local/include" \
             -Dlibmpv=true \
             builddir
         ninja -C builddir
@@ -323,7 +323,8 @@ jobs:
         PACKAGE_NAME="mpv-lgpl-${MPV_VERSION}-macos-arm64.tar.gz"
         
         # localディレクトリを直接tar.gzに圧縮する
-        tar -czf "$PACKAGE_NAME" -C "$BUILD_DIR" .
+        #tar -czf "$PACKAGE_NAME" -C "$BUILD_DIR" .
+        tar -czf "$PACKAGE_NAME" -C ./ local
         
         echo "package_path=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
 
