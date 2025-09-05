@@ -43,12 +43,13 @@ jobs:
           exit 0
 
       - name: Set up QEMU
-        if: matrix.arch != 'amd64'
+        if: matrix.arch != 'amd64' && env.BUILD_REQUIRED == 'true'
         uses: docker/setup-qemu-action@v3
         with:
           platforms: all
 
       - name: Install dependencies for ${{ matrix.arch }}
+        if: env.BUILD_REQUIRED == 'true'
         run: |
           sudo apt update
           sudo apt install -y build-essential git meson ninja-build devscripts \
@@ -57,6 +58,7 @@ jobs:
               libfribidi-dev libharfbuzz-dev libass-dev
 
       - name: Build and install libplacebo for ${{ matrix.arch }}
+        if: env.BUILD_REQUIRED == 'true'
         run: |
           git clone --depth=1 --recursive https://github.com/haasn/libplacebo.git
           cd libplacebo
@@ -64,9 +66,11 @@ jobs:
           sudo ninja -C build install
 
       - name: Get mpv source for ${{ matrix.arch }}
+        if: env.BUILD_REQUIRED == 'true'
         run: git clone --depth=1 https://github.com/mpv-player/mpv.git
 
       - name: Configure and build mpv with LGPL option for ${{ matrix.arch }}
+        if: env.BUILD_REQUIRED == 'true'
         run: |
           cd mpv
           meson setup build -Dgpl=false
@@ -74,6 +78,7 @@ jobs:
 
       - name: Create deb package for ${{ matrix.arch }}
         id: create_package
+        if: env.BUILD_REQUIRED == 'true'
         run: |
           MPV_TAG_FULL=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
           MPV_VERSION=$(echo "$MPV_TAG_FULL" | sed 's/^v//')
@@ -104,6 +109,7 @@ jobs:
           echo "deb_path=$DEB_PACKAGE_NAME" >> "$GITHUB_OUTPUT"
       
       - name: Upload deb package as artifact
+        if: env.BUILD_REQUIRED == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: mpv-lgpl-${{ matrix.arch }}
@@ -112,7 +118,7 @@ jobs:
   build_macos:
     runs-on: macos-latest
     permissions:
-      contents: write
+      contents: read
     
     steps:
       - uses: actions/checkout@v4
@@ -143,6 +149,7 @@ jobs:
       
       - name: Build macOS package
         id: build_mac_pkg
+        if: env.BUILD_REQUIRED == 'true'
         run: |
           set -e
           
@@ -258,6 +265,7 @@ jobs:
           echo "package_path=mpv-lgpl-${MPV_VERSION}-macos-arm64.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: Upload macOS package as artifact
+        if: env.BUILD_REQUIRED == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: mpv-lgpl-macos-arm64
