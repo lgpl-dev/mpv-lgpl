@@ -14,7 +14,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential git libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev checkinstall meson ninja-build libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev
+          sudo apt install -y build-essential git libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev checkinstall meson ninja-build libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev libfribidi-dev
 
       - name: Build and install libplacebo
         run: |
@@ -27,8 +27,6 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/libass/libass.git
           cd libass
-          # libassの依存ライブラリをインストール
-          sudo apt install -y libharfbuzz-dev libfontconfig-dev
           meson setup build
           sudo ninja -C build install
 
