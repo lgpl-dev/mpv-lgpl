@@ -326,33 +326,19 @@ jobs:
 
         cp "$BUILD_DIR/bin/mpv" "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
 
-        echo "--- Debugging: Output of otool -L ---"
-        otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl"
-        echo "-------------------------------------"
+        echo "--- Debugging: Copying all local dylibs ---"
+        find "$BUILD_DIR/lib" -name '*.dylib' -exec cp -L {} "$FINAL_PKG_DIR/Contents/Frameworks/" \;
+        echo "------------------------------------------"
 
-        LIBS_TO_COPY=$(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | \
-                           grep "$BUILD_DIR" | \
-                           awk '{print $1}')
-
-        echo "--- Debugging: Files to be copied ---"
-        echo "$LIBS_TO_COPY"
-        echo "------------------------------------"
-        
-        if [ -n "$LIBS_TO_COPY" ]; then
-          for LIB_PATH in $LIBS_TO_COPY; do
-              cp -L "$LIB_PATH" "$FINAL_PKG_DIR/Contents/Frameworks/"
-          done
-
-          # Now, relink the libraries inside the Frameworks directory
-          for LIB in "$FINAL_PKG_DIR/Contents/Frameworks"/*; do
-              install_name_tool -id "@executable_path/../Frameworks/$(basename "$LIB")" "$LIB"
-              
-              LIB_DEPS_TO_CHANGE=$(otool -L "$LIB" | grep -E 'lib\.dylib' | grep -v 'libSystem|libobjc|@executable_path' | awk '{print $1}')
-              for LIB_DEP in $LIB_DEPS_TO_CHANGE; do
-                  install_name_tool -change "$LIB_DEP" "@executable_path/../Frameworks/$(basename "$LIB_DEP")" "$LIB"
-              done
-          done
-        fi
+        # Now, relink the libraries inside the Frameworks directory
+        for LIB in "$FINAL_PKG_DIR/Contents/Frameworks"/*; do
+            install_name_tool -id "@executable_path/../Frameworks/$(basename "$LIB")" "$LIB"
+            
+            LIB_DEPS_TO_CHANGE=$(otool -L "$LIB" | grep -E 'lib\.dylib' | grep -v 'libSystem|libobjc|@executable_path|libunwind' | awk '{print $1}')
+            for LIB_DEP in $LIB_DEPS_TO_CHANGE; do
+                install_name_tool -change "$LIB_DEP" "@executable_path/../Frameworks/$(basename "$LIB_DEP")" "$LIB"
+            done
+        done
 
         MPV_DEPS_TO_CHANGE=$(otool -L "$FINAL_PKG_DIR/Contents/MacOS/mpv-lgpl" | grep -E 'lib\.dylib' | grep -v 'libSystem|libobjc|@executable_path|libunwind' | awk '{print $1}')
         for MPV_DEP in $MPV_DEPS_TO_CHANGE; do
