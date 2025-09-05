@@ -148,7 +148,7 @@ jobs:
       - name: Install dependencies via Homebrew
         if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'false'
         run: |
-          brew install gmake
+          brew install make
 
       - name: Build macOS package
         id: build_mac_pkg
@@ -171,8 +171,8 @@ jobs:
               --prefix="$BUILD_DIR" \
               --disable-gpl --disable-nonfree --enable-shared --disable-static \
               --disable-ffprobe --disable-ffplay --disable-doc --disable-stripping
-          make -j$(sysctl -n hw.ncpu)
-          make install
+          gmake -j$(sysctl -n hw.ncpu)
+          gmake install
           cd "$SCRIPT_DIR"
           
           echo "--- Building libplacebo ---"
@@ -199,8 +199,8 @@ jobs:
               --prefix="$BUILD_DIR" \
               --libdir="$BUILD_DIR/lib" \
               --includedir="$BUILD_DIR/include"
-          make -j$(sysctl -n hw.ncpu)
-          make install
+          gmake -j$(sysctl -n hw.ncpu)
+          gmake install
           cd "$SCRIPT_DIR"
           
           echo "--- Building libass ---"
@@ -214,8 +214,8 @@ jobs:
               --libdir="$BUILD_DIR/lib" \
               --includedir="$BUILD_DIR/include" \
               --disable-static
-          make -j$(sysctl -n hw.ncpu)
-          make install
+          gmake -j$(sysctl -n hw.ncpu)
+          gmake install
           cd "$SCRIPT_DIR"
           
           echo "--- Building mpv ---"
