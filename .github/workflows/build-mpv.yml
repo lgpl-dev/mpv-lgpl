@@ -114,8 +114,9 @@ jobs:
           name: mpv-lgpl-${{ matrix.arch }}
           path: ${{ steps.create_package.outputs.deb_path }}
 
-  setup_macos:
+  build_macos:
     runs-on: macos-latest
+    needs: [build_linux]
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -172,48 +173,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-macos-build-deps-v2-
 
-  build_ffmpeg:
-    needs: setup_macos
-    runs-on: macos-latest
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Homebrew environment
-      run: |
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-
-    - name: Check if macOS package already exists
-      id: check_macos_pkg
-      run: |
-        LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        PKG_NAME="mpv-lgpl-$(echo $LATEST_MPV_TAG | sed 's/^v//')-macos-arm64.tar.gz"
-        
-        RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq -r 'if .assets then .assets[].name else "" end')
-        
-        if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
-          echo "SKIP_BUILD=true" >> "$GITHUB_OUTPUT"
-          echo "macOS package already exists. Skipping build."
-        else
-          echo "SKIP_BUILD=false" >> "$GITHUB_OUTPUT"
-          echo "macOS package not found. Proceeding with build."
-        fi
-        
-    - name: Skip macOS build if package exists
-      if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'true'
-      run: |
-        echo "Build skipped."
-        exit 0
-
-    - name: Cache build artifacts
-      id: cache-build
-      uses: actions/cache@v4
-      with:
-        path: local
-        key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
-        restore-keys: |
-          ${{ runner.os }}-macos-build-deps-v2-
-
     - name: Build FFmpeg
       run: |
         set -e
@@ -231,48 +190,6 @@ jobs:
         gmake -j$(sysctl -n hw.ncpu)
         gmake install
         cd "$SCRIPT_DIR"
-
-  build_libplacebo:
-    needs: build_ffmpeg
-    runs-on: macos-latest
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Homebrew environment
-      run: |
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-
-    - name: Check if macOS package already exists
-      id: check_macos_pkg
-      run: |
-        LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        PKG_NAME="mpv-lgpl-$(echo $LATEST_MPV_TAG | sed 's/^v//')-macos-arm64.tar.gz"
-        
-        RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq -r 'if .assets then .assets[].name else "" end')
-        
-        if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
-          echo "SKIP_BUILD=true" >> "$GITHUB_OUTPUT"
-          echo "macOS package already exists. Skipping build."
-        else
-          echo "SKIP_BUILD=false" >> "$GITHUB_OUTPUT"
-          echo "macOS package not found. Proceeding with build."
-        fi
-
-    - name: Skip macOS build if package exists
-      if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'true'
-      run: |
-        echo "Build skipped."
-        exit 0
-
-    - name: Cache build artifacts
-      id: cache-build
-      uses: actions/cache@v4
-      with:
-        path: local
-        key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
-        restore-keys: |
-          ${{ runner.os }}-macos-build-deps-v2-
 
     - name: Build libplacebo
       run: |
@@ -294,48 +211,6 @@ jobs:
         ninja -C builddir install
         cd "$SCRIPT_DIR"
 
-  build_libunibreak:
-    needs: build_libplacebo
-    runs-on: macos-latest
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Homebrew environment
-      run: |
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-
-    - name: Check if macOS package already exists
-      id: check_macos_pkg
-      run: |
-        LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        PKG_NAME="mpv-lgpl-$(echo $LATEST_MPV_TAG | sed 's/^v//')-macos-arm64.tar.gz"
-        
-        RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq -r 'if .assets then .assets[].name else "" end')
-        
-        if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
-          echo "SKIP_BUILD=true" >> "$GITHUB_OUTPUT"
-          echo "macOS package already exists. Skipping build."
-        else
-          echo "SKIP_BUILD=false" >> "$GITHUB_OUTPUT"
-          echo "macOS package not found. Proceeding with build."
-        fi
-
-    - name: Skip macOS build if package exists
-      if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'true'
-      run: |
-        echo "Build skipped."
-        exit 0
-
-    - name: Cache build artifacts
-      id: cache-build
-      uses: actions/cache@v4
-      with:
-        path: local
-        key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
-        restore-keys: |
-          ${{ runner.os }}-macos-build-deps-v2-
-
     - name: Build libunibreak
       run: |
         set -e
@@ -354,48 +229,6 @@ jobs:
         gmake -j$(sysctl -n hw.ncpu)
         gmake install
         cd "$SCRIPT_DIR"
-
-  build_libass:
-    needs: build_libunibreak
-    runs-on: macos-latest
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Homebrew environment
-      run: |
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-
-    - name: Check if macOS package already exists
-      id: check_macos_pkg
-      run: |
-        LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        PKG_NAME="mpv-lgpl-$(echo $LATEST_MPV_TAG | sed 's/^v//')-macos-arm64.tar.gz"
-        
-        RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq -r 'if .assets then .assets[].name else "" end')
-        
-        if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
-          echo "SKIP_BUILD=true" >> "$GITHUB_OUTPUT"
-          echo "macOS package already exists. Skipping build."
-        else
-          echo "SKIP_BUILD=false" >> "$GITHUB_OUTPUT"
-          echo "macOS package not found. Proceeding with build."
-        fi
-
-    - name: Skip macOS build if package exists
-      if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'true'
-      run: |
-        echo "Build skipped."
-        exit 0
-
-    - name: Cache build artifacts
-      id: cache-build
-      uses: actions/cache@v4
-      with:
-        path: local
-        key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
-        restore-keys: |
-          ${{ runner.os }}-macos-build-deps-v2-
 
     - name: Build libass
       run: |
@@ -417,48 +250,6 @@ jobs:
         gmake install
         cd "$SCRIPT_DIR"
 
-  build_mpv:
-    needs: build_libass
-    runs-on: macos-latest
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Homebrew environment
-      run: |
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-
-    - name: Check if macOS package already exists
-      id: check_macos_pkg
-      run: |
-        LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        PKG_NAME="mpv-lgpl-$(echo $LATEST_MPV_TAG | sed 's/^v//')-macos-arm64.tar.gz"
-        
-        RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq -r 'if .assets then .assets[].name else "" end')
-        
-        if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
-          echo "SKIP_BUILD=true" >> "$GITHUB_OUTPUT"
-          echo "macOS package already exists. Skipping build."
-        else
-          echo "SKIP_BUILD=false" >> "$GITHUB_OUTPUT"
-          echo "macOS package not found. Proceeding with build."
-        fi
-
-    - name: Skip macOS build if package exists
-      if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'true'
-      run: |
-        echo "Build skipped."
-        exit 0
-
-    - name: Cache build artifacts
-      id: cache-build
-      uses: actions/cache@v4
-      with:
-        path: local
-        key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
-        restore-keys: |
-          ${{ runner.os }}-macos-build-deps-v2-
-          
     - name: Build mpv
       run: |
         set -e
@@ -481,48 +272,6 @@ jobs:
         ninja -C builddir install
         cd "$SCRIPT_DIR"
 
-  create_mac_package:
-    needs: build_mpv
-    runs-on: macos-latest
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Homebrew environment
-      run: |
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-
-    - name: Check if macOS package already exists
-      id: check_macos_pkg
-      run: |
-        LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        PKG_NAME="mpv-lgpl-$(echo $LATEST_MPV_TAG | sed 's/^v//')-macos-arm64.tar.gz"
-        
-        RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq -r 'if .assets then .assets[].name else "" end')
-        
-        if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
-          echo "SKIP_BUILD=true" >> "$GITHUB_OUTPUT"
-          echo "macOS package already exists. Skipping build."
-        else
-          echo "SKIP_BUILD=false" >> "$GITHUB_OUTPUT"
-          echo "macOS package not found. Proceeding with build."
-        fi
-
-    - name: Skip macOS build if package exists
-      if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'true'
-      run: |
-        echo "Build skipped."
-        exit 0
-
-    - name: Cache build artifacts
-      id: cache-build
-      uses: actions/cache@v4
-      with:
-        path: local
-        key: ${{ runner.os }}-macos-build-deps-v2-${{ hashFiles('**/mpv.c') }}
-        restore-keys: |
-          ${{ runner.os }}-macos-build-deps-v2-
-          
     - name: Create self-contained package
       id: build_mac_pkg
       run: |
@@ -570,13 +319,14 @@ jobs:
         echo "package_path=mpv-lgpl-${MPV_VERSION}-macos-arm64.tar.gz" >> "$GITHUB_OUTPUT"
 
     - name: Upload macOS package as artifact
+      if: steps.check_macos_pkg.outputs.SKIP_BUILD == 'false'
       uses: actions/upload-artifact@v4
       with:
         name: mpv-lgpl-macos-arm64
         path: ${{ steps.build_mac_pkg.outputs.package_path }}
 
   release:
-    needs: [build_linux, create_mac_package]
+    needs: [build_linux, build_macos]
     runs-on: ubuntu-latest
     if: success()
     permissions:
