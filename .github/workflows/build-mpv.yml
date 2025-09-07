@@ -153,6 +153,9 @@ jobs:
 
     - name: Install dependencies via Homebrew
       run: |
+        # このステップで、brew installの前に既存のpythonシンボリックリンクを削除
+        echo "Removing conflicting Python symlinks..."
+        find /usr/local/bin -lname '*/Library/Frameworks/Python.framework/*' -delete
         brew install make meson ninja autoconf automake libtool pkg-config harfbuzz fontconfig freetype fribidi
     
     - name: Set Homebrew environment
@@ -366,7 +369,12 @@ jobs:
           RELEASE_ID=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$REPO_NAME/releases/tags/$TAG_NAME" | jq -r '.id')
           if [ "$RELEASE_ID" != "null" ]; then
             echo "Release for tag $TAG_NAME already exists. Uploading assets to existing release."
-            UPLOAD_URL=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$REPO_NAME/releases/$RELEASE_ID" | jq -r '.upload_url' | sed 's/{?name,label}//')
+            UPLOAD_URL=$(curl -s -X PATCH -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/json" -d "{
+              \"tag_name\": \"$TAG_NAME\",
+              \"name\": \"Release $TAG_NAME\",
+              \"draft\": false,
+              \"prerelease\": false
+            }" "https://api.github.com/repos/$REPO_NAME/releases/$RELEASE_ID" | jq -r '.upload_url' | sed 's/{?name,label}//')
           else
             echo "Creating new release for tag $TAG_NAME."
             RELEASE_RESPONSE=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/json" -d "{
