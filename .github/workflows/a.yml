@@ -1,0 +1,238 @@
+name: Build LGPL mpv Multi-Arch 2
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+
+jobs:
+  build_linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        arch: [amd64, arm64, armhf]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Fetch all tags
+        run: git fetch --tags
+
+      - name: Check if Linux package for current version exists
+        id: check_linux_pkg
+        run: |
+          LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          PKG_NAME="mpv-lgpl_$(echo $LATEST_MPV_TAG | sed 's/^v//')-1_${{ matrix.arch }}.deb"
+          
+          RELEASE_ASSETS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST_MPV_TAG" | jq -r 'if .assets then .assets[].name else "" end')
+          
+          if echo "$RELEASE_ASSETS" | grep -q "$PKG_NAME"; then
+            echo "SKIP_BUILD=true" >> "$GITHUB_OUTPUT"
+            echo "Linux package for ${{ matrix.arch }} already exists. Skipping build."
+          else
+            echo "SKIP_BUILD=false" >> "$GITHUB_OUTPUT"
+            echo "Linux package for ${{ matrix.arch }} not found. Proceeding with build."
+          fi
+          
+      - name: Skip Linux build if package exists
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'true'
+        run: |
+          echo "Build skipped."
+
+      - name: Set up QEMU
+        if: matrix.arch != 'amd64' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - name: Install dependencies for ${{ matrix.arch }}
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential git meson ninja-build devscripts \
+            libavcodec-dev libavfilter-dev libavformat-dev libswscale-dev libswresample-dev \
+            libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
+            libfribidi-dev libharfbuzz-dev libass-dev \
+            pkg-config \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+
+      - name: Create Meson cross file
+        id: create_cross_file
+        if: matrix.arch != 'amd64' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        run: |
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            arch_type="aarch64"
+            compiler_prefix="aarch64-linux-gnu"
+          elif [ "${{ matrix.arch }}" == "armhf" ]; then
+            arch_type="arm"
+            compiler_prefix="arm-linux-gnueabihf"
+          else
+            arch_type="${{ matrix.arch }}"
+            compiler_prefix=""
+          fi
+
+          cat > cross_file.ini <<EOF
+          [binaries]
+          c = '${compiler_prefix}-gcc'
+          cpp = '${compiler_prefix}-g++'
+          ar = '${compiler_prefix}-ar'
+          strip = '${compiler_prefix}-strip'
+          pkg-config = '/usr/bin/pkg-config'
+
+          [host_machine]
+          system = 'linux'
+          cpu_family = '${arch_type}'
+          cpu = '${arch_type}'
+          endian = 'little'
+          EOF
+          
+          echo "cross_file_exists=true" >> "$GITHUB_OUTPUT"
+          
+      - name: Build and install libplacebo for ${{ matrix.arch }}
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        run: |
+          git clone --depth=1 --recursive https://github.com/haasn/libplacebo.git
+          cd libplacebo
+          if [ "${{ matrix.arch }}" == "amd64" ]; then
+            meson setup build --prefix /usr
+          else
+            meson setup build --prefix /usr --cross-file ../cross_file.ini
+          fi
+          sudo ninja -C build install
+
+      - name: Get mpv source for ${{ matrix.arch }}
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        run: git clone https://github.com/mpv-player/mpv.git
+
+      - name: Configure and build mpv with LGPL option for ${{ matrix.arch }}
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        run: |
+          cd mpv
+          if [ "${{ matrix.arch }}" == "amd64" ]; then
+            meson setup build -Dgpl=false --prefix /usr
+          else
+            # Pass the install path of libplacebo to meson
+            meson setup build -Dgpl=false --prefix /usr --cross-file ../cross_file.ini -Dlibplacebo=true
+          fi
+          ninja -C build
+
+      - name: Create deb package for ${{ matrix.arch }}
+        id: create_package
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        run: |
+          MPV_TAG_FULL=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          MPV_VERSION=$(echo "$MPV_TAG_FULL" | sed 's/^v//')
+          if [ -z "$MPV_VERSION" ]; then exit 1; fi
+          DEB_PACKAGE_NAME="mpv-lgpl_${MPV_VERSION}-1_${{ matrix.arch }}.deb"
+          DEB_DIR="debian_pkg"
+          MPV_BUILD_DIR="mpv/build"
+          
+          mkdir -p "$DEB_DIR/usr/local/bin"
+          mkdir -p "$DEB_DIR/usr/local/lib"
+          mkdir -p "$DEB_DIR/DEBIAN"
+          
+          cp "$MPV_BUILD_DIR/mpv" "$DEB_DIR/usr/local/bin/"
+          cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/"
+          (cd "$DEB_DIR/usr/local/lib/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
+          (cd "$DEB_DIR/usr/local/lib/" && ln -s libmpv.so.2 libmpv.so)
+          
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+              mkdir -p "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/"
+              mv "$DEB_DIR/usr/local/lib/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/"
+              (cd "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
+              (cd "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/" && ln -s libmpv.so.2 libmpv.so)
+          elif [ "${{ matrix.arch }}" == "armhf" ]; then
+              mkdir -p "$DEB_DIR/usr/local/lib/arm-linux-gnueabihf/"
+              mv "$DEB_DIR/usr/local/lib/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/arm-linux-gnueabihf/"
+              (cd "$DEB_DIR/usr/local/lib/arm-linux-gnueabihf/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
+              (cd "$DEB_DIR/usr/local/lib/arm-linux-gnueabihf/" && ln -s libmpv.so.2 libmpv.so)
+          fi
+          
+          cat > "$DEB_DIR/DEBIAN/control" <<EOF
+          Package: mpv-lgpl
+          Version: ${MPV_VERSION}
+          Section: video
+          Priority: optional
+          Architecture: ${{ matrix.arch }}
+          Maintainer: Your Name <your.email@example.com>
+          Description: A media player LGPLv2.1 or later.
+           mpv is a free and open-source command-line media player.
+           This package is built with LGPLv2.1+ only files.
+          Depends: libavcodec-dev, libavfilter-dev, libavformat-dev, libswresample-dev, libswscale-dev, libjpeg-dev, libx11-dev, libxext-dev, libxinerama-dev, libfreetype6-dev, libfontconfig-dev, libfribidi-dev, libharfbuzz-dev, libass-dev
+          EOF
+          
+          dpkg-deb --build "$DEB_DIR" "$DEB_PACKAGE_NAME"
+          echo "deb_path=$DEB_PACKAGE_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload deb package as artifact
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mpv-lgpl-${{ matrix.arch }}
+          path: ${{ steps.create_package.outputs.deb_path }}
+
+  release:
+    needs: [build_linux]
+    runs-on: ubuntu-latest
+    if: success()
+    permissions:
+      contents: write
+    steps:
+      - name: Check for new release
+        id: check_version
+        run: |
+          LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ -z "$LATEST_MPV_TAG" ]; then exit 1; fi
+          echo "NEW_TAG=$LATEST_MPV_TAG" >> "$GITHUB_ENV"
+          
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          
+      - name: Create GitHub Release and Upload Assets
+        id: release_and_upload
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+
+          if [ ! -d ./artifacts ] || [ -z "$(ls -A ./artifacts)" ]; then
+              echo "No artifacts found to upload. Skipping release creation/upload."
+              exit 0
+          fi
+
+          TAG_NAME="${{ env.NEW_TAG }}"
+          REPO_NAME="${{ github.repository }}"
+          
+          RELEASE_ID=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$REPO_NAME/releases/tags/$TAG_NAME" | jq -r '.id')
+          if [ "$RELEASE_ID" != "null" ]; then
+            echo "Release for tag $TAG_NAME already exists. Uploading assets to existing release."
+            UPLOAD_URL=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$REPO_NAME/releases/$RELEASE_ID" | jq -r '.upload_url' | sed 's/{?name,label}//')
+          else
+            echo "Creating new release for tag $TAG_NAME."
+            RELEASE_RESPONSE=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/json" -d "{
+              \"tag_name\": \"$TAG_NAME\",
+              \"name\": \"Release $TAG_NAME\",
+              \"draft\": false,
+              \"prerelease\": false
+            }" "https://api.github.com/repos/$REPO_NAME/releases")
+            UPLOAD_URL=$(echo "$RELEASE_RESPONSE" | jq -r '.upload_url' | sed 's/{?name,label}//')
+          fi
+          
+          if [ "$UPLOAD_URL" == "null" ]; then
+            echo "Error: Failed to get upload URL."
+            exit 1;
+          fi
+
+          for PACKAGE_FILE in ./artifacts/*/*; do
+            FILE_NAME=$(basename "$PACKAGE_FILE")
+            echo "Uploading $FILE_NAME to $UPLOAD_URL"
+            curl -s -X POST \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@$PACKAGE_FILE" \
+              "$UPLOAD_URL?name=$FILE_NAME"
+          done
