@@ -55,22 +55,25 @@ jobs:
             libavcodec-dev libavfilter-dev libavformat-dev libswscale-dev libswresample-dev \
             libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
             libfribidi-dev libharfbuzz-dev libass-dev \
+            pkg-config \
             gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
-            
+
       - name: Create Meson cross file
         id: create_cross_file
         if: matrix.arch != 'amd64' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
-          # The host machine is x86_64, but the build target is the matrix arch.
           if [ "${{ matrix.arch }}" == "arm64" ]; then
             arch_type="aarch64"
             compiler_prefix="aarch64-linux-gnu"
+            lib_dir_suffix="aarch64-linux-gnu"
           elif [ "${{ matrix.arch }}" == "armhf" ]; then
             arch_type="arm"
             compiler_prefix="arm-linux-gnueabihf"
+            lib_dir_suffix="arm-linux-gnueabihf"
           else
             arch_type="${{ matrix.arch }}"
             compiler_prefix=""
+            lib_dir_suffix=""
           fi
 
           cat > cross_file.ini <<EOF
@@ -79,13 +82,17 @@ jobs:
           cpp = '${compiler_prefix}-g++'
           ar = '${compiler_prefix}-ar'
           strip = '${compiler_prefix}-strip'
-          pkg-config = '${compiler_prefix}-pkg-config'
+          pkg-config = '/usr/bin/pkg-config'
 
           [host_machine]
           system = 'linux'
           cpu_family = '${arch_type}'
           cpu = '${arch_type}'
           endian = 'little'
+
+          [paths]
+          prefix = '/usr'
+          libdir = 'lib/${lib_dir_suffix}'
           EOF
           
           echo "cross_file_exists=true" >> "$GITHUB_OUTPUT"
@@ -98,6 +105,7 @@ jobs:
           if [ "${{ matrix.arch }}" == "amd64" ]; then
             meson setup build --prefix /usr
           else
+            export PKG_CONFIG_PATH=/usr/lib/${{ matrix.arch }}-linux-gnu/pkgconfig:/usr/share/pkgconfig
             meson setup build --prefix /usr --cross-file ../cross_file.ini
           fi
           sudo ninja -C build install
@@ -128,19 +136,15 @@ jobs:
           DEB_DIR="debian_pkg"
           MPV_BUILD_DIR="mpv/build"
           
-          # Create debian directory structure
           mkdir -p "$DEB_DIR/usr/local/bin"
           mkdir -p "$DEB_DIR/usr/local/lib"
           mkdir -p "$DEB_DIR/DEBIAN"
           
-          # Copy compiled binaries to debian directory
           cp "$MPV_BUILD_DIR/mpv" "$DEB_DIR/usr/local/bin/"
           cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/"
           (cd "$DEB_DIR/usr/local/lib/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
           (cd "$DEB_DIR/usr/local/lib/" && ln -s libmpv.so.2 libmpv.so)
           
-          # Adjusting lib paths for different architectures
-          # On aarch64 and armhf, dynamic linker looks for libraries in '...-linux-gnu' directories
           if [ "${{ matrix.arch }}" == "arm64" ]; then
               mkdir -p "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/"
               mv "$DEB_DIR/usr/local/lib/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/"
@@ -202,8 +206,6 @@ jobs:
         run: |
           set -e
 
-          # Check if any artifacts were actually downloaded
-          # If not, this means all builds were skipped, so we exit gracefully.
           if [ ! -d ./artifacts ] || [ -z "$(ls -A ./artifacts)" ]; then
               echo "No artifacts found to upload. Skipping release creation/upload."
               exit 0
@@ -212,7 +214,6 @@ jobs:
           TAG_NAME="${{ env.NEW_TAG }}"
           REPO_NAME="${{ github.repository }}"
           
-          # Check if the release already exists
           RELEASE_ID=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$REPO_NAME/releases/tags/$TAG_NAME" | jq -r '.id')
           if [ "$RELEASE_ID" != "null" ]; then
             echo "Release for tag $TAG_NAME already exists. Uploading assets to existing release."
