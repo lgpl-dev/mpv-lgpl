@@ -54,8 +54,9 @@ jobs:
           sudo apt install -y build-essential git meson ninja-build devscripts \
             libavcodec-dev libavfilter-dev libavformat-dev libswscale-dev libswresample-dev \
             libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
-            libfribidi-dev libharfbuzz-dev libass-dev
-
+            libfribidi-dev libharfbuzz-dev libass-dev \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+            
       - name: Create Meson cross file
         id: create_cross_file
         if: matrix.arch != 'amd64' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
