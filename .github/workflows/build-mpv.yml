@@ -64,29 +64,32 @@ jobs:
           # The host machine is x86_64, but the build target is the matrix arch.
           if [ "${{ matrix.arch }}" == "arm64" ]; then
             arch_type="aarch64"
+            compiler_prefix="aarch64-linux-gnu"
           elif [ "${{ matrix.arch }}" == "armhf" ]; then
             arch_type="arm"
+            compiler_prefix="arm-linux-gnueabihf"
           else
             arch_type="${{ matrix.arch }}"
+            compiler_prefix=""
           fi
 
           cat > cross_file.ini <<EOF
           [binaries]
-          c = '${arch_type}-linux-gnu-gcc'
-          cpp = '${arch_type}-linux-gnu-g++'
-          ar = '${arch_type}-linux-gnu-ar'
-          strip = '${arch_type}-linux-gnu-strip'
-          pkgconfig = 'pkg-config'
+          c = '${compiler_prefix}-gcc'
+          cpp = '${compiler_prefix}-g++'
+          ar = '${compiler_prefix}-ar'
+          strip = '${compiler_prefix}-strip'
+          pkg-config = '${compiler_prefix}-pkg-config'
 
           [host_machine]
           system = 'linux'
-          cpu_family = '${{ matrix.arch }}'
-          cpu = '${{ matrix.arch }}'
+          cpu_family = '${arch_type}'
+          cpu = '${arch_type}'
           endian = 'little'
           EOF
           
           echo "cross_file_exists=true" >> "$GITHUB_OUTPUT"
-
+          
       - name: Build and install libplacebo for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
