@@ -56,12 +56,46 @@ jobs:
             libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
             libfribidi-dev libharfbuzz-dev libass-dev
 
+      - name: Create Meson cross file
+        id: create_cross_file
+        if: matrix.arch != 'amd64' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        run: |
+          # The host machine is x86_64, but the build target is the matrix arch.
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            arch_type="aarch64"
+          elif [ "${{ matrix.arch }}" == "armhf" ]; then
+            arch_type="arm"
+          else
+            arch_type="${{ matrix.arch }}"
+          fi
+
+          cat > cross_file.ini <<EOF
+          [binaries]
+          c = '${arch_type}-linux-gnu-gcc'
+          cpp = '${arch_type}-linux-gnu-g++'
+          ar = '${arch_type}-linux-gnu-ar'
+          strip = '${arch_type}-linux-gnu-strip'
+          pkgconfig = 'pkg-config'
+
+          [host_machine]
+          system = 'linux'
+          cpu_family = '${{ matrix.arch }}'
+          cpu = '${{ matrix.arch }}'
+          endian = 'little'
+          EOF
+          
+          echo "cross_file_exists=true" >> "$GITHUB_OUTPUT"
+
       - name: Build and install libplacebo for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
           git clone --depth=1 --recursive https://github.com/haasn/libplacebo.git
           cd libplacebo
-          meson setup build
+          if [ "${{ matrix.arch }}" == "amd64" ]; then
+            meson setup build --prefix /usr
+          else
+            meson setup build --prefix /usr --cross-file ../cross_file.ini
+          fi
           sudo ninja -C build install
 
       - name: Get mpv source for ${{ matrix.arch }}
@@ -72,7 +106,11 @@ jobs:
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
           cd mpv
-          meson setup build -Dgpl=false
+          if [ "${{ matrix.arch }}" == "amd64" ]; then
+            meson setup build -Dgpl=false --prefix /usr
+          else
+            meson setup build -Dgpl=false --prefix /usr --cross-file ../cross_file.ini
+          fi
           ninja -C build
 
       - name: Create deb package for ${{ matrix.arch }}
@@ -85,13 +123,32 @@ jobs:
           DEB_PACKAGE_NAME="mpv-lgpl_${MPV_VERSION}-1_${{ matrix.arch }}.deb"
           DEB_DIR="debian_pkg"
           MPV_BUILD_DIR="mpv/build"
+          
+          # Create debian directory structure
           mkdir -p "$DEB_DIR/usr/local/bin"
-          mkdir -p "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu"
+          mkdir -p "$DEB_DIR/usr/local/lib"
           mkdir -p "$DEB_DIR/DEBIAN"
+          
+          # Copy compiled binaries to debian directory
           cp "$MPV_BUILD_DIR/mpv" "$DEB_DIR/usr/local/bin/"
-          cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu/"
-          (cd "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
-          (cd "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu/" && ln -s libmpv.so.2 libmpv.so)
+          cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/"
+          (cd "$DEB_DIR/usr/local/lib/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
+          (cd "$DEB_DIR/usr/local/lib/" && ln -s libmpv.so.2 libmpv.so)
+          
+          # Adjusting lib paths for different architectures
+          # On aarch64 and armhf, dynamic linker looks for libraries in '...-linux-gnu' directories
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+              mkdir -p "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/"
+              mv "$DEB_DIR/usr/local/lib/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/"
+              (cd "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
+              (cd "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/" && ln -s libmpv.so.2 libmpv.so)
+          elif [ "${{ matrix.arch }}" == "armhf" ]; then
+              mkdir -p "$DEB_DIR/usr/local/lib/arm-linux-gnueabihf/"
+              mv "$DEB_DIR/usr/local/lib/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/arm-linux-gnueabihf/"
+              (cd "$DEB_DIR/usr/local/lib/arm-linux-gnueabihf/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
+              (cd "$DEB_DIR/usr/local/lib/arm-linux-gnueabihf/" && ln -s libmpv.so.2 libmpv.so)
+          fi
+          
           cat > "$DEB_DIR/DEBIAN/control" <<EOF
           Package: mpv-lgpl
           Version: ${MPV_VERSION}
@@ -100,13 +157,14 @@ jobs:
           Architecture: ${{ matrix.arch }}
           Maintainer: Your Name <your.email@example.com>
           Description: A media player LGPLv2.1 or later.
-            mpv is a free and open-source command-line media player.
-            This package is built with LGPLv2.1+ only files.
+           mpv is a free and open-source command-line media player.
+           This package is built with LGPLv2.1+ only files.
           Depends: libavcodec-dev, libavfilter-dev, libavformat-dev, libswresample-dev, libswscale-dev, libjpeg-dev, libx11-dev, libxext-dev, libxinerama-dev, libfreetype6-dev, libfontconfig-dev, libfribidi-dev, libharfbuzz-dev, libass-dev
           EOF
+          
           dpkg-deb --build "$DEB_DIR" "$DEB_PACKAGE_NAME"
           echo "deb_path=$DEB_PACKAGE_NAME" >> "$GITHUB_OUTPUT"
-      
+
       - name: Upload deb package as artifact
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         uses: actions/upload-artifact@v4
@@ -127,12 +185,12 @@ jobs:
           LATEST_MPV_TAG=$(curl -s "https://api.github.com/repos/mpv-player/mpv/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
           if [ -z "$LATEST_MPV_TAG" ]; then exit 1; fi
           echo "NEW_TAG=$LATEST_MPV_TAG" >> "$GITHUB_ENV"
-      
+          
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: ./artifacts
-      
+          
       - name: Create GitHub Release and Upload Assets
         id: release_and_upload
         env:
