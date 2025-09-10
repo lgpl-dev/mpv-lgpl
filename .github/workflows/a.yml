@@ -113,11 +113,10 @@ jobs:
           if [ "${{ matrix.arch }}" == "amd64" ]; then
             meson setup build -Dgpl=false --prefix /usr
           else
-            # Pass the install path of libplacebo to meson
-            meson setup build -Dgpl=false --prefix /usr --cross-file ../cross_file.ini -Dlibplacebo=true
+            meson setup build -Dgpl=false --prefix /usr --cross-file ../cross_file.ini
           fi
           ninja -C build
-
+          
       - name: Create deb package for ${{ matrix.arch }}
         id: create_package
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
