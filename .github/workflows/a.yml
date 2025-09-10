@@ -55,6 +55,11 @@ jobs:
         with:
           platforms: all
 
+      - name: Add FFmpeg PPA
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        run: |
+          sudo add-apt-repository ppa:jonathonf/ffmpeg-4 -y
+
       - name: Install dependencies for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
