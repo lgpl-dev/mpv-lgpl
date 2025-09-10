@@ -1,4 +1,4 @@
-name: Build LGPL mpv Multi-Arch 2
+name: Build LGPL mpv Multi-Arch
 
 on:
   schedule:
@@ -111,12 +111,13 @@ jobs:
       - name: Configure and build mpv with LGPL option for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
+          cd mpv
           if [ "${{ matrix.arch }}" == "armhf" ]; then
-            meson setup mpv/build -Dgpl=false --cross-file cross_file.ini
+            meson setup build -Dgpl=false --cross-file ../cross_file.ini
           else
-            meson setup mpv/build -Dgpl=false
+            meson setup build -Dgpl=false
           fi
-          ninja -C mpv/build
+          ninja -C build
 
       - name: Create deb package for ${{ matrix.arch }}
         id: create_package
