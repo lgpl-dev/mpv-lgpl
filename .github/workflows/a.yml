@@ -1,4 +1,4 @@
-name: Build LGPL mpv Multi-Arch
+name: Build LGPL mpv Multi-Arch 2
 
 on:
   schedule:
@@ -50,7 +50,7 @@ jobs:
           echo "Build skipped."
 
       - name: Set up QEMU
-        if: matrix.arch != 'amd64' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        if: matrix.arch == 'armhf' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         uses: docker/setup-qemu-action@v3
         with:
           platforms: all
@@ -64,6 +64,28 @@ jobs:
             libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
             libfribidi-dev libharfbuzz-dev libass-dev \
             python3-pip python3-setuptools
+          
+          if [ "${{ matrix.arch }}" == "armhf" ]; then
+            sudo apt install -y g++-arm-linux-gnueabihf gcc-arm-linux-gnueabihf
+          fi
+
+      - name: Create Meson cross-file
+        if: matrix.arch == 'armhf' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        run: |
+          cat <<EOF > cross_file.ini
+          [binaries]
+          c = 'arm-linux-gnueabihf-gcc'
+          cpp = 'arm-linux-gnueabihf-g++'
+          ar = 'arm-linux-gnueabihf-ar'
+          strip = 'arm-linux-gnueabihf-strip'
+          pkg-config = 'arm-linux-gnueabihf-pkg-config'
+
+          [host_machine]
+          system = 'linux'
+          cpu_family = 'arm'
+          cpu = 'armv7hf'
+          endian = 'little'
+          EOF
 
       - name: Install latest Meson
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
@@ -75,7 +97,11 @@ jobs:
         run: |
           git clone --depth=1 --recursive https://github.com/haasn/libplacebo.git
           cd libplacebo
-          meson setup build
+          if [ "${{ matrix.arch }}" == "armhf" ]; then
+            meson setup build --cross-file ../cross_file.ini
+          else
+            meson setup build
+          fi
           sudo ninja -C build install
 
       - name: Get mpv source for ${{ matrix.arch }}
@@ -85,9 +111,12 @@ jobs:
       - name: Configure and build mpv with LGPL option for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
-          cd mpv
-          meson setup build -Dgpl=false
-          ninja -C build
+          if [ "${{ matrix.arch }}" == "armhf" ]; then
+            meson setup mpv/build -Dgpl=false --cross-file cross_file.ini
+          else
+            meson setup mpv/build -Dgpl=false
+          fi
+          ninja -C mpv/build
 
       - name: Create deb package for ${{ matrix.arch }}
         id: create_package
