@@ -19,8 +19,6 @@ jobs:
             os: ubuntu-24.04
           - arch: arm64
             os: ubuntu-24.04
-          - arch: armhf
-            os: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -49,12 +47,6 @@ jobs:
         run: |
           echo "Build skipped."
 
-      - name: Set up QEMU
-        if: matrix.arch == 'armhf' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-
       - name: Install dependencies for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
@@ -64,28 +56,6 @@ jobs:
             libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
             libfribidi-dev libharfbuzz-dev libass-dev \
             python3-pip python3-setuptools
-          
-          if [ "${{ matrix.arch }}" == "armhf" ]; then
-            sudo apt install -y g++-arm-linux-gnueabihf gcc-arm-linux-gnueabihf
-          fi
-
-      - name: Create Meson cross-file
-        if: matrix.arch == 'armhf' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
-        run: |
-          cat <<EOF > cross_file.ini
-          [binaries]
-          c = 'arm-linux-gnueabihf-gcc'
-          cpp = 'arm-linux-gnueabihf-g++'
-          ar = 'arm-linux-gnueabihf-ar'
-          strip = 'arm-linux-gnueabihf-strip'
-          pkg-config = 'arm-linux-gnueabihf-pkg-config'
-
-          [host_machine]
-          system = 'linux'
-          cpu_family = 'arm'
-          cpu = 'armv7hf'
-          endian = 'little'
-          EOF
 
       - name: Install latest Meson
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
@@ -97,11 +67,7 @@ jobs:
         run: |
           git clone --depth=1 --recursive https://github.com/haasn/libplacebo.git
           cd libplacebo
-          if [ "${{ matrix.arch }}" == "armhf" ]; then
-            meson setup build --cross-file ../cross_file.ini
-          else
-            meson setup build
-          fi
+          meson setup build
           sudo ninja -C build install
 
       - name: Get mpv source for ${{ matrix.arch }}
@@ -112,11 +78,7 @@ jobs:
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
           cd mpv
-          if [ "${{ matrix.arch }}" == "armhf" ]; then
-            meson setup build -Dgpl=false --cross-file ../cross_file.ini
-          else
-            meson setup build -Dgpl=false
-          fi
+          meson setup build -Dgpl=false
           ninja -C build
 
       - name: Create deb package for ${{ matrix.arch }}
