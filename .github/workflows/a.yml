@@ -1,4 +1,4 @@
-name: Build LGPL mpv Multi-Arch
+name: Build LGPL mpv Multi-Arch 2
 
 on:
   schedule:
@@ -118,7 +118,10 @@ jobs:
           if [ "${{ matrix.arch }}" == "amd64" ]; then
             meson setup build -Dgpl=false --prefix /usr
           else
+            # Correct PKG_CONFIG_PATH for cross-compilation
             export PKG_CONFIG_PATH=/usr/lib/${{ steps.create_cross_file.outputs.lib_dir_suffix }}/pkgconfig:/usr/share/pkgconfig
+            
+            # The cross file specifies the correct compiler and tools, so you don't need to manually configure includes.
             meson setup build -Dgpl=false --prefix /usr --cross-file ../cross_file.ini
           fi
           ninja -C build
