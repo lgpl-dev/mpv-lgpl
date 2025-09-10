@@ -1,4 +1,4 @@
-name: Build LGPL mpv Multi-Arch2
+name: Build LGPL mpv Multi-Arch
 
 on:
   schedule:
@@ -64,6 +64,11 @@ jobs:
             libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
             libfribidi-dev libharfbuzz-dev libass-dev \
             python3-pip python3-setuptools
+
+      - name: Install latest Meson
+        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
+        run: |
+          sudo pip3 install --upgrade meson
 
       - name: Build and install libplacebo for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
