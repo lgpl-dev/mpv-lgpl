@@ -1,4 +1,4 @@
-name: Build LGPL mpv Multi-Arch 2
+name: Build LGPL mpv Multi-Arch
 
 on:
   schedule:
@@ -65,12 +65,15 @@ jobs:
           if [ "${{ matrix.arch }}" == "arm64" ]; then
             arch_type="aarch64"
             compiler_prefix="aarch64-linux-gnu"
+            lib_dir_suffix="aarch64-linux-gnu"
           elif [ "${{ matrix.arch }}" == "armhf" ]; then
             arch_type="arm"
             compiler_prefix="arm-linux-gnueabihf"
+            lib_dir_suffix="arm-linux-gnueabihf"
           else
             arch_type="${{ matrix.arch }}"
             compiler_prefix=""
+            lib_dir_suffix=""
           fi
 
           cat > cross_file.ini <<EOF
@@ -88,8 +91,8 @@ jobs:
           endian = 'little'
           EOF
           
-          echo "cross_file_exists=true" >> "$GITHUB_OUTPUT"
-          
+          echo "lib_dir_suffix=$lib_dir_suffix" >> "$GITHUB_OUTPUT"
+
       - name: Build and install libplacebo for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
@@ -97,10 +100,12 @@ jobs:
           cd libplacebo
           if [ "${{ matrix.arch }}" == "amd64" ]; then
             meson setup build --prefix /usr
+            sudo ninja -C build install
           else
+            export PKG_CONFIG_PATH=/usr/lib/${{ steps.create_cross_file.outputs.lib_dir_suffix }}/pkgconfig:/usr/share/pkgconfig
             meson setup build --prefix /usr --cross-file ../cross_file.ini
+            sudo ninja -C build install
           fi
-          sudo ninja -C build install
 
       - name: Get mpv source for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
@@ -113,10 +118,11 @@ jobs:
           if [ "${{ matrix.arch }}" == "amd64" ]; then
             meson setup build -Dgpl=false --prefix /usr
           else
+            export PKG_CONFIG_PATH=/usr/lib/${{ steps.create_cross_file.outputs.lib_dir_suffix }}/pkgconfig:/usr/share/pkgconfig
             meson setup build -Dgpl=false --prefix /usr --cross-file ../cross_file.ini
           fi
           ninja -C build
-          
+
       - name: Create deb package for ${{ matrix.arch }}
         id: create_package
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
