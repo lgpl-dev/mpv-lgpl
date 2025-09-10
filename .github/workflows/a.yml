@@ -1,4 +1,4 @@
-name: Build LGPL mpv Multi-Arch 2
+name: Build LGPL mpv Multi-Arch
 
 on:
   schedule:
@@ -56,7 +56,13 @@ jobs:
             libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
             libfribidi-dev libharfbuzz-dev libass-dev \
             pkg-config \
-            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+            libass-dev:aarch64-linux-gnu libass-dev:arm-linux-gnueabihf \
+            libglib2.0-dev:aarch64-linux-gnu libglib2.0-dev:arm-linux-gnueabihf \
+            libfreetype-dev:aarch64-linux-gnu libfreetype-dev:arm-linux-gnueabihf \
+            libharfbuzz-dev:aarch64-linux-gnu libharfbuzz-dev:arm-linux-gnueabihf \
+            libfontconfig-dev:aarch64-linux-gnu libfontconfig-dev:arm-linux-gnueabihf \
+            libfribidi-dev:aarch64-linux-gnu libfribidi-dev:arm-linux-gnueabihf
 
       - name: Create Meson cross file
         id: create_cross_file
@@ -65,15 +71,21 @@ jobs:
           if [ "${{ matrix.arch }}" == "arm64" ]; then
             arch_type="aarch64"
             compiler_prefix="aarch64-linux-gnu"
-            lib_dir_suffix="aarch64-linux-gnu"
           elif [ "${{ matrix.arch }}" == "armhf" ]; then
             arch_type="arm"
             compiler_prefix="arm-linux-gnueabihf"
-            lib_dir_suffix="arm-linux-gnueabihf"
           else
             arch_type="${{ matrix.arch }}"
             compiler_prefix=""
-            lib_dir_suffix=""
+          fi
+
+          # Use the cross-specific pkg-config
+          PKG_CONFIG_BIN="${compiler_prefix}-pkg-config"
+          
+          # Check if the pkg-config binary exists, if not, fallback or fail.
+          if ! command -v "$PKG_CONFIG_BIN" &> /dev/null; then
+            echo "Cross-specific pkg-config binary not found, this may cause issues."
+            PKG_CONFIG_BIN="/usr/bin/pkg-config"
           fi
 
           cat > cross_file.ini <<EOF
@@ -82,7 +94,7 @@ jobs:
           cpp = '${compiler_prefix}-g++'
           ar = '${compiler_prefix}-ar'
           strip = '${compiler_prefix}-strip'
-          pkg-config = '/usr/bin/pkg-config'
+          pkg-config = '${PKG_CONFIG_BIN}'
 
           [host_machine]
           system = 'linux'
@@ -90,8 +102,6 @@ jobs:
           cpu = '${arch_type}'
           endian = 'little'
           EOF
-          
-          echo "lib_dir_suffix=$lib_dir_suffix" >> "$GITHUB_OUTPUT"
 
       - name: Build and install libplacebo for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
@@ -100,12 +110,10 @@ jobs:
           cd libplacebo
           if [ "${{ matrix.arch }}" == "amd64" ]; then
             meson setup build --prefix /usr
-            sudo ninja -C build install
           else
-            export PKG_CONFIG_PATH=/usr/lib/${{ steps.create_cross_file.outputs.lib_dir_suffix }}/pkgconfig:/usr/share/pkgconfig
             meson setup build --prefix /usr --cross-file ../cross_file.ini
-            sudo ninja -C build install
           fi
+          sudo ninja -C build install
 
       - name: Get mpv source for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
@@ -118,10 +126,7 @@ jobs:
           if [ "${{ matrix.arch }}" == "amd64" ]; then
             meson setup build -Dgpl=false --prefix /usr
           else
-            # Correct PKG_CONFIG_PATH for cross-compilation
-            export PKG_CONFIG_PATH=/usr/lib/${{ steps.create_cross_file.outputs.lib_dir_suffix }}/pkgconfig:/usr/share/pkgconfig
-            
-            # The cross file specifies the correct compiler and tools, so you don't need to manually configure includes.
+            # Meson will now use the correct cross-specific pkg-config from the cross file.
             meson setup build -Dgpl=false --prefix /usr --cross-file ../cross_file.ini
           fi
           ninja -C build
