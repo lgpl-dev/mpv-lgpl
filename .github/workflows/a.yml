@@ -1,4 +1,4 @@
-name: Build LGPL mpv Multi-Arch
+name: Build LGPL mpv Multi-Arch2
 
 on:
   schedule:
@@ -7,12 +7,20 @@ on:
 
 jobs:
   build_linux:
-    runs-on: ubuntu-latest
+    name: Build Linux ${{ matrix.arch }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     strategy:
+      fail-fast: false
       matrix:
-        arch: [amd64, arm64, armhf]
+        include:
+          - arch: amd64
+            os: ubuntu-20.04
+          - arch: arm64
+            os: ubuntu-22.04
+          - arch: armhf
+            os: ubuntu-22.04
 
     steps:
       - name: Checkout repository
@@ -54,65 +62,14 @@ jobs:
           sudo apt install -y build-essential git meson ninja-build devscripts \
             libavcodec-dev libavfilter-dev libavformat-dev libswscale-dev libswresample-dev \
             libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
-            libfribidi-dev libharfbuzz-dev libass-dev \
-            pkg-config \
-            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
-            libass-dev:aarch64-linux-gnu libass-dev:arm-linux-gnueabihf \
-            libglib2.0-dev:aarch64-linux-gnu libglib2.0-dev:arm-linux-gnueabihf \
-            libfreetype-dev:aarch64-linux-gnu libfreetype-dev:arm-linux-gnueabihf \
-            libharfbuzz-dev:aarch64-linux-gnu libharfbuzz-dev:arm-linux-gnueabihf \
-            libfontconfig-dev:aarch64-linux-gnu libfontconfig-dev:arm-linux-gnueabihf \
-            libfribidi-dev:aarch64-linux-gnu libfribidi-dev:arm-linux-gnueabihf
-
-      - name: Create Meson cross file
-        id: create_cross_file
-        if: matrix.arch != 'amd64' && steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
-        run: |
-          if [ "${{ matrix.arch }}" == "arm64" ]; then
-            arch_type="aarch64"
-            compiler_prefix="aarch64-linux-gnu"
-          elif [ "${{ matrix.arch }}" == "armhf" ]; then
-            arch_type="arm"
-            compiler_prefix="arm-linux-gnueabihf"
-          else
-            arch_type="${{ matrix.arch }}"
-            compiler_prefix=""
-          fi
-
-          # Use the cross-specific pkg-config
-          PKG_CONFIG_BIN="${compiler_prefix}-pkg-config"
-          
-          # Check if the pkg-config binary exists, if not, fallback or fail.
-          if ! command -v "$PKG_CONFIG_BIN" &> /dev/null; then
-            echo "Cross-specific pkg-config binary not found, this may cause issues."
-            PKG_CONFIG_BIN="/usr/bin/pkg-config"
-          fi
-
-          cat > cross_file.ini <<EOF
-          [binaries]
-          c = '${compiler_prefix}-gcc'
-          cpp = '${compiler_prefix}-g++'
-          ar = '${compiler_prefix}-ar'
-          strip = '${compiler_prefix}-strip'
-          pkg-config = '${PKG_CONFIG_BIN}'
-
-          [host_machine]
-          system = 'linux'
-          cpu_family = '${arch_type}'
-          cpu = '${arch_type}'
-          endian = 'little'
-          EOF
+            libfribidi-dev libharfbuzz-dev libass-dev
 
       - name: Build and install libplacebo for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
           git clone --depth=1 --recursive https://github.com/haasn/libplacebo.git
           cd libplacebo
-          if [ "${{ matrix.arch }}" == "amd64" ]; then
-            meson setup build --prefix /usr
-          else
-            meson setup build --prefix /usr --cross-file ../cross_file.ini
-          fi
+          meson setup build
           sudo ninja -C build install
 
       - name: Get mpv source for ${{ matrix.arch }}
@@ -123,12 +80,7 @@ jobs:
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
           cd mpv
-          if [ "${{ matrix.arch }}" == "amd64" ]; then
-            meson setup build -Dgpl=false --prefix /usr
-          else
-            # Meson will now use the correct cross-specific pkg-config from the cross file.
-            meson setup build -Dgpl=false --prefix /usr --cross-file ../cross_file.ini
-          fi
+          meson setup build -Dgpl=false
           ninja -C build
 
       - name: Create deb package for ${{ matrix.arch }}
@@ -141,28 +93,13 @@ jobs:
           DEB_PACKAGE_NAME="mpv-lgpl_${MPV_VERSION}-1_${{ matrix.arch }}.deb"
           DEB_DIR="debian_pkg"
           MPV_BUILD_DIR="mpv/build"
-          
           mkdir -p "$DEB_DIR/usr/local/bin"
-          mkdir -p "$DEB_DIR/usr/local/lib"
+          mkdir -p "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu"
           mkdir -p "$DEB_DIR/DEBIAN"
-          
           cp "$MPV_BUILD_DIR/mpv" "$DEB_DIR/usr/local/bin/"
-          cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/"
-          (cd "$DEB_DIR/usr/local/lib/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
-          (cd "$DEB_DIR/usr/local/lib/" && ln -s libmpv.so.2 libmpv.so)
-          
-          if [ "${{ matrix.arch }}" == "arm64" ]; then
-              mkdir -p "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/"
-              mv "$DEB_DIR/usr/local/lib/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/"
-              (cd "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
-              (cd "$DEB_DIR/usr/local/lib/aarch64-linux-gnu/" && ln -s libmpv.so.2 libmpv.so)
-          elif [ "${{ matrix.arch }}" == "armhf" ]; then
-              mkdir -p "$DEB_DIR/usr/local/lib/arm-linux-gnueabihf/"
-              mv "$DEB_DIR/usr/local/lib/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/arm-linux-gnueabihf/"
-              (cd "$DEB_DIR/usr/local/lib/arm-linux-gnueabihf/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
-              (cd "$DEB_DIR/usr/local/lib/arm-linux-gnueabihf/" && ln -s libmpv.so.2 libmpv.so)
-          fi
-          
+          cp "$MPV_BUILD_DIR/libmpv.so.2.5.0" "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu/"
+          (cd "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu/" && ln -s libmpv.so.2.5.0 libmpv.so.2)
+          (cd "$DEB_DIR/usr/local/lib/${{ matrix.arch }}-linux-gnu/" && ln -s libmpv.so.2 libmpv.so)
           cat > "$DEB_DIR/DEBIAN/control" <<EOF
           Package: mpv-lgpl
           Version: ${MPV_VERSION}
@@ -171,14 +108,13 @@ jobs:
           Architecture: ${{ matrix.arch }}
           Maintainer: Your Name <your.email@example.com>
           Description: A media player LGPLv2.1 or later.
-           mpv is a free and open-source command-line media player.
-           This package is built with LGPLv2.1+ only files.
+            mpv is a free and open-source command-line media player.
+            This package is built with LGPLv2.1+ only files.
           Depends: libavcodec-dev, libavfilter-dev, libavformat-dev, libswresample-dev, libswscale-dev, libjpeg-dev, libx11-dev, libxext-dev, libxinerama-dev, libfreetype6-dev, libfontconfig-dev, libfribidi-dev, libharfbuzz-dev, libass-dev
           EOF
-          
           dpkg-deb --build "$DEB_DIR" "$DEB_PACKAGE_NAME"
           echo "deb_path=$DEB_PACKAGE_NAME" >> "$GITHUB_OUTPUT"
-
+          
       - name: Upload deb package as artifact
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         uses: actions/upload-artifact@v4
@@ -212,6 +148,8 @@ jobs:
         run: |
           set -e
 
+          # Check if any artifacts were actually downloaded
+          # If not, this means all builds were skipped, so we exit gracefully.
           if [ ! -d ./artifacts ] || [ -z "$(ls -A ./artifacts)" ]; then
               echo "No artifacts found to upload. Skipping release creation/upload."
               exit 0
@@ -220,6 +158,7 @@ jobs:
           TAG_NAME="${{ env.NEW_TAG }}"
           REPO_NAME="${{ github.repository }}"
           
+          # Check if the release already exists
           RELEASE_ID=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$REPO_NAME/releases/tags/$TAG_NAME" | jq -r '.id')
           if [ "$RELEASE_ID" != "null" ]; then
             echo "Release for tag $TAG_NAME already exists. Uploading assets to existing release."
