@@ -1,4 +1,4 @@
-name: Build LGPL mpv Multi-Arch
+name: Build LGPL mpv Multi-Arch2
 
 on:
   schedule:
@@ -59,7 +59,7 @@ jobs:
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
           sudo apt update
-          sudo apt install -y build-essential git meson ninja-build devscripts \
+          sudo apt install -y build-essential git ninja-build devscripts \
             libavcodec-dev libavfilter-dev libavformat-dev libswscale-dev libswresample-dev \
             libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
             libfribidi-dev libharfbuzz-dev libass-dev \
@@ -68,7 +68,7 @@ jobs:
       - name: Install latest Meson
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
-          sudo pip3 install meson
+          sudo pip3 install --upgrade meson
 
       - name: Build and install libplacebo for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
