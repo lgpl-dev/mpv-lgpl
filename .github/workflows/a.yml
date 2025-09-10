@@ -16,11 +16,11 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            os: ubuntu-20.04
+            os: ubuntu-24.04
           - arch: arm64
-            os: ubuntu-22.04
+            os: ubuntu-24.04
           - arch: armhf
-            os: ubuntu-22.04
+            os: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -55,11 +55,6 @@ jobs:
         with:
           platforms: all
 
-      - name: Add FFmpeg PPA
-        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
-        run: |
-          sudo add-apt-repository ppa:jonathonf/ffmpeg-4 -y
-
       - name: Install dependencies for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
         run: |
@@ -69,11 +64,6 @@ jobs:
             libjpeg-dev libx11-dev libxext-dev libxinerama-dev libfreetype6-dev libfontconfig-dev \
             libfribidi-dev libharfbuzz-dev libass-dev \
             python3-pip python3-setuptools
-
-      - name: Install latest Meson
-        if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
-        run: |
-          sudo pip3 install --upgrade meson
 
       - name: Build and install libplacebo for ${{ matrix.arch }}
         if: steps.check_linux_pkg.outputs.SKIP_BUILD == 'false'
