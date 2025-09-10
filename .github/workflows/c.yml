@@ -8,7 +8,7 @@ on:
 jobs:
   build_linux:
     name: Build Linux arm64 on ubuntu-24.04-arm64
-    runs-on: ubuntu-24.04-arm64
+    runs-on: ubuntu-24.04-arm
     permissions:
       contents: write
     
